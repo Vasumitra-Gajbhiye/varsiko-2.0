@@ -1,0 +1,40 @@
+{
+  "name": "@severance/porter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Porter — the Severance agent that rewrites a Vercel-coupled Next.js app to run off-platform, and emits the change as a reviewable pull request.",
+  "type": "module",
+  "bin": {
+    "porter": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "demo": "tsx src/cli.ts port fixtures/victim-app --dry-run --pretty"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.2",
+    "commander": "^13.0.0",
+    "diff": "^7.0.0",
+    "express": "^4.21.2",
+    "fast-glob": "^3.3.3",
+    "picocolors": "^1.1.1",
+    "simple-git": "^3.27.0",
+    "ts-morph": "^24.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "ioredis": "^5.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
