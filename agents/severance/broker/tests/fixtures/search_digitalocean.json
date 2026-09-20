@@ -1,0 +1,12 @@
+{
+  "id": "fixture-search-digitalocean",
+  "results": [
+    {
+      "url": "https://www.digitalocean.com/pricing/droplets",
+      "title": "DigitalOcean Droplet pricing",
+      "snippet": "Basic droplets including 4 vCPU / 8 GB.",
+      "date": "2026-09-01",
+      "last_updated": "2026-09-18"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "severance.capacity_spec/v1",
+  "generated_at": "2026-09-20T12:34:56Z",
+  "source_project": "victim-app",
+  "current_cost": {
+    "monthly_inr": 3480,
+    "billing_currency": "USD",
+    "evidence": "vercel billing charges api"
+  },
+  "capacity": {
+    "vcpu": 4,
+    "ram_gb": 8,
+    "disk_gb": 80,
+    "egress_tb": 2,
+    "headroom_factor": 1.5,
+    "derived_from": "p95 of 14d observability window"
+  },
+  "constraints": {
+    "region_allowlist": ["in-blr", "sg-sin", "ap-south"],
+    "spec_floor": { "vcpu": 4, "ram_gb": 8, "disk_gb": 80, "egress_tb": 1 },
+    "must_support": ["docker", "cloud-init", "ipv4"]
+  },
+  "lockin_inventory": []
+}

@@ -1,0 +1,10 @@
+{
+  "name": "score-candidates",
+  "version": "0.1.0",
+  "type": "skill",
+  "description": "Hard-filter and rank VPS plans against a rupee ceiling, region allowlist, spec floor, and required capabilities. Pure function: no network, no LLM.",
+  "entry": "src/broker/scoring.py",
+  "exports": ["score_candidates"],
+  "tags": ["procurement", "scoring", "constraints"],
+  "runtime": "python"
+}

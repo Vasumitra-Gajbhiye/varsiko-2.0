@@ -1,0 +1,58 @@
+{
+  "protocolVersion": "0.2.9",
+  "name": "severance-broker",
+  "description": "Vendor-adversarial procurement agent. Shops live VPS pricing, scores every plan against hard rupee/region/spec constraints in code, and mints one HMAC-signed cart mandate. It cannot buy or provision. A human must approve APPROVE MND-… before anything is sent to the Pilot.",
+  "url": "http://localhost:8000/",
+  "agentFramework": "claude-sdk",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Severance",
+    "url": "https://nasiko.com"
+  },
+  "version": "0.1.0",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "securitySchemes": {},
+  "security": [],
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "shop-and-score",
+      "name": "Shop and score providers",
+      "description": "Discover current pricing pages, scrape structured plan rows, and rank them against a Surveyor capacity spec. The ceiling, region allowlist, and spec floor are enforced in Python, not in the prompt.",
+      "tags": ["procurement", "pricing", "hetzner", "digitalocean", "vultr"],
+      "examples": [
+        "Shop a capacity spec with ceiling ₹1500",
+        "Score these VPS plans against the spec floor"
+      ],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain", "application/json"]
+    },
+    {
+      "id": "mint-cart-mandate",
+      "name": "Mint signed cart mandate",
+      "description": "Re-check every constraint independently of scoring, then HMAC-SHA256 sign a severance.cart_mandate/v1. Refuses over-ceiling winners instead of minting.",
+      "tags": ["mandate", "hmac", "approval"],
+      "examples": [
+        "Mint a cart mandate for the winning Hetzner plan"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "human-approval-gate",
+      "name": "Human approval gate",
+      "description": "Park the A2A task in input-required with a deterministic purchase-order card. Resume only when the same session replies APPROVE <mandate_id>. Bare yes does not count.",
+      "tags": ["hitl", "approval", "a2a"],
+      "examples": [
+        "APPROVE MND-7F3A2C"
+      ],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain", "application/json"]
+    }
+  ]
+}
