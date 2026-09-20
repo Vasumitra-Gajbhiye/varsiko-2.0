@@ -1,0 +1,4 @@
+{"BilledCost": 20.0, "ChargeCategory": "Usage", "BillingCurrency": "USD", "ServiceName": "Fast Data Transfer", "ConsumedQuantity": 700, "ConsumedUnit": "GB", "Tags": {"ProjectId": "prj_victim", "ProjectName": "victim-app"}}
+{"BilledCost": 21.6, "ChargeCategory": "Usage", "BillingCurrency": "USD", "ServiceName": "Fluid Compute", "ConsumedQuantity": 12, "ConsumedUnit": "GBHours", "Tags": {"ProjectId": "prj_victim"}}
+{"BilledCost": 5.0, "ChargeCategory": "Credit", "BillingCurrency": "USD", "ServiceName": "Promo", "Tags": {"ProjectId": "prj_victim"}}
+{"BilledCost": 99.0, "ChargeCategory": "Usage", "BillingCurrency": "USD", "ServiceName": "Seats", "ConsumedQuantity": 3, "ConsumedUnit": "Seats", "Tags": {}}

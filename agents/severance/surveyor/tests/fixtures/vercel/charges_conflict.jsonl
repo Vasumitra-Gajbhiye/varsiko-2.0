@@ -1,0 +1,2 @@
+{"BilledCost": 20.0, "ChargeCategory": "Usage", "BillingCurrency": "USD", "ServiceName": "Fast Data Transfer", "ConsumedQuantity": 280, "ConsumedUnit": "GB", "Tags": {"ProjectId": "prj_victim"}}
+{"BilledCost": 21.6, "ChargeCategory": "Usage", "BillingCurrency": "USD", "ServiceName": "Fluid Compute", "Tags": {"ProjectId": "prj_victim"}}

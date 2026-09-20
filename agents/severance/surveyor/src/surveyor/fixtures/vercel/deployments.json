@@ -1,0 +1,30 @@
+{
+  "deployments": [
+    {
+      "uid": "dpl_1",
+      "name": "victim-app",
+      "target": "production",
+      "readyState": "READY",
+      "functions": [
+        {
+          "route": "/api/hello",
+          "runtime": "nodejs20.x",
+          "memory": 1024,
+          "maxDuration": 10,
+          "regions": ["sin1"]
+        }
+      ]
+    }
+  ],
+  "count_30d": 12,
+  "last_prod": {"uid": "dpl_1"},
+  "functions": [
+    {
+      "route": "/api/hello",
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 10,
+      "regions": ["sin1"]
+    }
+  ]
+}

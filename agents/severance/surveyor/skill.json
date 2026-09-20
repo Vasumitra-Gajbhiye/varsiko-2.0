@@ -1,0 +1,10 @@
+{
+  "name": "scan-lockin",
+  "version": "0.1.0",
+  "type": "skill",
+  "description": "Statically scan a Next.js tree for Vercel lock-in. Pure function: no network, no LLM, never executes the repo.",
+  "entry": "src/surveyor/lockin_scan.py",
+  "exports": ["scan_lockin"],
+  "tags": ["lock-in", "nextjs", "vercel", "self-host"],
+  "runtime": "python"
+}

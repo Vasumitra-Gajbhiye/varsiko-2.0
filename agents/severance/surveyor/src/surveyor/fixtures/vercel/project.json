@@ -1,0 +1,16 @@
+{
+  "id": "prj_victim",
+  "name": "victim-app",
+  "accountId": "team_acme",
+  "framework": "nextjs",
+  "serverlessFunctionRegion": "sin1",
+  "rootDirectory": ".",
+  "elasticConcurrencyEnabled": true,
+  "fluid": true,
+  "link": {
+    "type": "github",
+    "org": "acme",
+    "repo": "victim-app",
+    "productionBranch": "main"
+  }
+}

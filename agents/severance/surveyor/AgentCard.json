@@ -1,0 +1,46 @@
+{
+  "protocolVersion": "0.2.9",
+  "name": "severance-surveyor",
+  "description": "Read-only Vercel/GitHub surveyor. Finds the live project behind a repo, inventories lock-in, derives a capacity spec, and writes one severance.capacity_spec/v1 file. It cannot spend, deploy, or run the target repo.",
+  "url": "http://localhost:8000/",
+  "agentFramework": "claude-sdk",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Severance",
+    "url": "https://nasiko.com"
+  },
+  "version": "0.1.0",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "securitySchemes": {},
+  "security": [],
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "survey-vercel-project",
+      "name": "Survey a Vercel project",
+      "description": "Resolve the Vercel project for a GitHub repo, pull billing/metrics/env/deployments, and emit a capacity spec. The ceiling is never inferred.",
+      "tags": ["vercel", "capacity", "billing", "observability"],
+      "examples": [
+        "Survey https://github.com/acme/victim-app with ceiling ₹1500"
+      ],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain", "application/json"]
+    },
+    {
+      "id": "inventory-lockin",
+      "name": "Inventory Vercel lock-in",
+      "description": "Statically scan a Next.js tree for ISR, next/image, Blob, KV, crons, edge runtime, and other self-host breakages. Rules table, not an LLM.",
+      "tags": ["lock-in", "nextjs", "self-host"],
+      "examples": [
+        "Scan this repo for Vercel lock-in"
+      ],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain", "application/json"]
+    }
+  ]
+}

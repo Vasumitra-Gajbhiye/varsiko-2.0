@@ -1,0 +1,375 @@
+{
+  "available": [
+    "active_cpu_s",
+    "provisioned_mem_gb",
+    "peak_mem_gb",
+    "fdt_out",
+    "fot_out"
+  ],
+  "unavailable": [],
+  "series": {
+    "active_cpu_s": {
+      "label": "Active CPU seconds",
+      "hourly": [
+        {
+          "ts": "h00",
+          "value": 3600.0
+        },
+        {
+          "ts": "h01",
+          "value": 3600.0
+        },
+        {
+          "ts": "h02",
+          "value": 3600.0
+        },
+        {
+          "ts": "h03",
+          "value": 3600.0
+        },
+        {
+          "ts": "h04",
+          "value": 3600.0
+        },
+        {
+          "ts": "h05",
+          "value": 3600.0
+        },
+        {
+          "ts": "h06",
+          "value": 3600.0
+        },
+        {
+          "ts": "h07",
+          "value": 3600.0
+        },
+        {
+          "ts": "h08",
+          "value": 3600.0
+        },
+        {
+          "ts": "h09",
+          "value": 3600.0
+        },
+        {
+          "ts": "h10",
+          "value": 3600.0
+        },
+        {
+          "ts": "h11",
+          "value": 3600.0
+        },
+        {
+          "ts": "h12",
+          "value": 3600.0
+        },
+        {
+          "ts": "h13",
+          "value": 3600.0
+        },
+        {
+          "ts": "h14",
+          "value": 3600.0
+        },
+        {
+          "ts": "h15",
+          "value": 3600.0
+        },
+        {
+          "ts": "h16",
+          "value": 3600.0
+        },
+        {
+          "ts": "h17",
+          "value": 3600.0
+        },
+        {
+          "ts": "h18",
+          "value": 3600.0
+        },
+        {
+          "ts": "h19",
+          "value": 3600.0
+        }
+      ],
+      "total": 72000
+    },
+    "provisioned_mem_gb": {
+      "label": "Provisioned Memory GB",
+      "hourly": [
+        {
+          "ts": "h00",
+          "value": 2.0
+        },
+        {
+          "ts": "h01",
+          "value": 2.0
+        },
+        {
+          "ts": "h02",
+          "value": 2.0
+        },
+        {
+          "ts": "h03",
+          "value": 2.0
+        },
+        {
+          "ts": "h04",
+          "value": 2.0
+        },
+        {
+          "ts": "h05",
+          "value": 2.0
+        },
+        {
+          "ts": "h06",
+          "value": 2.0
+        },
+        {
+          "ts": "h07",
+          "value": 2.0
+        },
+        {
+          "ts": "h08",
+          "value": 2.0
+        },
+        {
+          "ts": "h09",
+          "value": 2.0
+        },
+        {
+          "ts": "h10",
+          "value": 2.0
+        },
+        {
+          "ts": "h11",
+          "value": 2.0
+        },
+        {
+          "ts": "h12",
+          "value": 2.0
+        },
+        {
+          "ts": "h13",
+          "value": 2.0
+        },
+        {
+          "ts": "h14",
+          "value": 2.0
+        },
+        {
+          "ts": "h15",
+          "value": 2.0
+        },
+        {
+          "ts": "h16",
+          "value": 2.0
+        },
+        {
+          "ts": "h17",
+          "value": 2.0
+        },
+        {
+          "ts": "h18",
+          "value": 2.0
+        },
+        {
+          "ts": "h19",
+          "value": 2.0
+        }
+      ],
+      "total": 40.0
+    },
+    "peak_mem_gb": {
+      "label": "Peak Memory GB",
+      "hourly": [
+        {
+          "ts": "h00",
+          "value": 0.5
+        },
+        {
+          "ts": "h01",
+          "value": 0.5
+        },
+        {
+          "ts": "h02",
+          "value": 0.5
+        },
+        {
+          "ts": "h03",
+          "value": 0.5
+        },
+        {
+          "ts": "h04",
+          "value": 0.5
+        },
+        {
+          "ts": "h05",
+          "value": 0.5
+        },
+        {
+          "ts": "h06",
+          "value": 0.5
+        },
+        {
+          "ts": "h07",
+          "value": 0.5
+        },
+        {
+          "ts": "h08",
+          "value": 0.5
+        },
+        {
+          "ts": "h09",
+          "value": 0.5
+        },
+        {
+          "ts": "h10",
+          "value": 0.5
+        },
+        {
+          "ts": "h11",
+          "value": 0.5
+        },
+        {
+          "ts": "h12",
+          "value": 0.5
+        },
+        {
+          "ts": "h13",
+          "value": 0.5
+        },
+        {
+          "ts": "h14",
+          "value": 0.5
+        },
+        {
+          "ts": "h15",
+          "value": 0.5
+        },
+        {
+          "ts": "h16",
+          "value": 0.5
+        },
+        {
+          "ts": "h17",
+          "value": 0.5
+        },
+        {
+          "ts": "h18",
+          "value": 0.5
+        },
+        {
+          "ts": "h19",
+          "value": 0.5
+        }
+      ],
+      "total": 10.0
+    },
+    "requests": {
+      "label": "Requests",
+      "hourly": [
+        {
+          "ts": "h00",
+          "value": 41.0
+        },
+        {
+          "ts": "h01",
+          "value": 41.0
+        },
+        {
+          "ts": "h02",
+          "value": 41.0
+        },
+        {
+          "ts": "h03",
+          "value": 41.0
+        },
+        {
+          "ts": "h04",
+          "value": 41.0
+        },
+        {
+          "ts": "h05",
+          "value": 41.0
+        },
+        {
+          "ts": "h06",
+          "value": 41.0
+        },
+        {
+          "ts": "h07",
+          "value": 41.0
+        },
+        {
+          "ts": "h08",
+          "value": 41.0
+        },
+        {
+          "ts": "h09",
+          "value": 41.0
+        },
+        {
+          "ts": "h10",
+          "value": 41.0
+        },
+        {
+          "ts": "h11",
+          "value": 41.0
+        },
+        {
+          "ts": "h12",
+          "value": 41.0
+        },
+        {
+          "ts": "h13",
+          "value": 41.0
+        },
+        {
+          "ts": "h14",
+          "value": 41.0
+        },
+        {
+          "ts": "h15",
+          "value": 41.0
+        },
+        {
+          "ts": "h16",
+          "value": 41.0
+        },
+        {
+          "ts": "h17",
+          "value": 41.0
+        },
+        {
+          "ts": "h18",
+          "value": 41.0
+        },
+        {
+          "ts": "h19",
+          "value": 41.0
+        }
+      ],
+      "total": 820.0
+    }
+  },
+  "edge_request_share": 0.1,
+  "isr_operations": 12,
+  "image_duration_s": 0,
+  "image_optimized_gb": 0,
+  "isr_write_gb": 0,
+  "blob_gb": 25,
+  "fdt_out_bytes": 500000000000.0,
+  "fot_out_bytes": 200000000000.0,
+  "window_days": 14,
+  "p95_rps": 41,
+  "peak_rps": 120,
+  "top_routes": [
+    {
+      "route": "/blog/[slug]",
+      "share": 0.38,
+      "p95_ms": 210,
+      "cacheable": true
+    }
+  ]
+}
