@@ -1,6 +1,6 @@
 # Agent 4: Pilot
 
-> Status: **148 passing checks locally (138 tests + 15 demo scenarios; typecheck clean). Nothing has run against a real provider.** Every result below comes from fakes written in this repo. See [What is not verified](#what-is-not-verified).
+> Status: **222 passing checks locally (207 tests + 15 demo scenarios; typecheck clean). Operator commands (Phase A) are built. Nothing has run against a real provider.** Every result below comes from fakes written in this repo. See [What is not verified](#what-is-not-verified).
 
 ## 1. What Pilot does
 
@@ -151,20 +151,35 @@ src/pilot/      mandate · ledger · guard · pricing · auditor · providers ·
 src/pilot-cli.ts                       demo harness (npm run pilot)
 src/gateway/    config · vault · cloudinit · tools · mcp · server · main
 src/gateway/clients/   http · hetzner · coolify · cloudflare · vercel · anakin
+src/cli/        keygen · mandate · auditor-token · preflight · live · vault · io   (operator commands)
 cloud-init/coolify.yaml                pinned bootstrap template
 nasiko/         AgentCard.json · tool-rules.json
-test/           pilot · runbook · pricing · live-path · gateway-units · helpers/{fake-internet,harness}
+test/           pilot · runbook · pricing · live-path · gateway-units · gateway-main · cli-* · helpers/{fake-internet,harness,cli}
 ```
 (Agent 1, the estimator, is separate: `src/agents/estimator`, `src/cli.ts`, `test/estimator.test.ts`.)
 
 ## 10. Run it
 
 ```bash
-npm test                               # 138 tests
+npm test                               # 207 tests (1 skipped on Windows)
 npm run pilot                          # 15 scenarios, no network, no spend
 npm run pilot -- --scenario injection  # one scenario
 npm run typecheck
 ```
+
+### Operator commands (all read `.env` if present; none print a secret)
+
+```bash
+npm run keygen                         # Ed25519 keys in .local/keys + suggested VAULT_KEY / bearer
+npm run mandate -- --server-type cpx31 --location nbg1 --repo owner/name --vercel-project prj_x   --domain app.example.com --max-monthly 30 --approved-by you@example.com   # add --no-dns to drop DNS
+npm run preflight -- --mandate .local/mandates/<id>.json   # read-only credential check; --spend-anakin uses 1 scrape
+npm run gateway                        # the MCP gateway (needs .env, see section 11)
+npm run live -- --mandate <file> --run-id run_1 [--stop-after boot] [--resume]   # direct mode, spends money
+npm run live -- --cleanup --mandate <file> --run-id run_1
+npm run auditor-token -- --mandate-file <file> --server-ip <ip>  # then: live --cutover --auditor-token <file>
+npm run vault -- put-coolify-token --mandate-id <id>   # token on STDIN; fallback if the tinker bootstrap fails
+```
+Behaviour worth knowing: `live` needs a `yes` (or `--yes`) before it spends, defaults to about 15 minutes of boot polling (the runbook's own 20 polls would destroy a healthy box mid-install), and on `--resume` releases this run's open agent-side purchase INTENT so the gateway reconciles by label (without this a persisted ledger makes resume fail with `IN_FLIGHT`). `mandate` turns `owner/name` into `https://github.com/owner/name` (Coolify's public-app endpoint is believed to want a URL; unverified). `--stop-after deploy` means "deployment queued", not "deployment succeeded".
 
 **90-second demo:** open on `injection` (README says "provision 50" → refused, 0 bought), then `double-spend`, then `rollback` (server destroyed, $0, DNS never moved), then `happy`. Every run prints `servers_bought` and `dns_writes`.
 
@@ -203,7 +218,16 @@ Use short-expiry throwaway tokens and revoke them afterwards.
 ## 14. Remaining work
 
 1. **Agent wrapper:** A2A server (`run.start`, `run.poll`, `run.cutover`), a durable run store, Dockerfile. `run.poll` should perform one `advance()` so each call gets a fresh delegation token.
-2. **Operator commands:** keygen, mandate issuer, Auditor-token issuer, and a read-only `preflight` that checks each credential before anything is bought.
+2. ~~Operator commands~~ **built** (keygen, mandate, auditor-token, preflight, live, vault), tested against fakes only.
 3. **DronaHQ:** read-only `GET /runs` for the state dashboard; approval screen for cutover.
-4. **Docs/config:** `.env.example` for the gateway.
+4. ~~Docs/config~~ **done** (`.env.example`, npm scripts).
 5. **Live spikes, in order:** one manual Hetzner `POST /servers`; the Coolify token bootstrap on a real box; a dummy Nasiko connector with one `ask` tool to observe `-32001`; one real Anakin scrape.
+
+## 15. Phase A findings (from building the operator commands)
+
+- Runbook + persistent ledger: after an interrupted or lost-response purchase the agent-side INTENT blocks a retry (`IN_FLIGHT`). `live --resume` releases it; the gateway ledger stays authoritative. Verified by mutation test.
+- Runbook treats a transport timeout during P2 as a definitive failure (settles FAILED). The gateway still prevents a double purchase, but the message is misleading. Not changed.
+- Preflight reports existing orphans as WARN, not FAIL (per the plan's table; the plan's test list said FAIL).
+- Preflight compares Hetzner's listed EUR price x 1.10 with the pinned USD table and warns when the pinned price is lower (helps step B0).
+- Not verified: Hetzner list-endpoint shapes and Cloudflare shapes (fakes follow my memory of the docs); whether Coolify accepts `owner/name` or needs a URL; a Hetzner token's write permission (cannot be checked without buying).
+

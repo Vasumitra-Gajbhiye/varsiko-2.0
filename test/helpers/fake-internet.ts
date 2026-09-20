@@ -15,6 +15,18 @@ export interface FakeInternetOptions {
   deployStatusBlips?: number;
   priceJobPolls?: number;
   priceMarkdown?: string;
+  /** Every Hetzner call answers 401, as with a revoked or wrong token. */
+  hetznerUnauthorized?: boolean;
+  /** SSH key names that exist in the Hetzner project. */
+  sshKeyNames?: string[];
+  /** Server types Hetzner lists. */
+  serverTypes?: string[];
+  /** Server types Hetzner marks deprecated. */
+  deprecatedServerTypes?: string[];
+  /** Inbound sources on the firewall's tcp/8000 rule. Empty list means no rule at all. */
+  firewallSources?: string[];
+  /** Cloudflare token verify returns an inactive token. */
+  cloudflareInactive?: boolean;
 }
 
 interface FakeServer {
@@ -23,6 +35,7 @@ interface FakeServer {
   labels: Record<string, string>;
   ip: string;
   user_data: string;
+  created: string;
 }
 
 const json = (body: unknown, status = 200) =>
@@ -40,7 +53,7 @@ const json = (body: unknown, status = 200) =>
 export class FakeInternet {
   readonly opts: Required<FakeInternetOptions>;
   readonly servers = new Map<number, FakeServer>();
-  readonly requests: { method: string; host: string; path: string }[] = [];
+  readonly requests: { method: string; host: string; path: string; search: string }[] = [];
   readonly envsReceived: { key: string; value: string }[] = [];
   readonly appBodies: Record<string, unknown>[] = [];
   readonly dns = new Map<string, { id: string; content: string; ttl: number; proxied: boolean }>();
@@ -60,6 +73,12 @@ export class FakeInternet {
       deployStatusBlips: 0,
       priceJobPolls: 2,
       priceMarkdown: '| Name | Price |\n|---|---|\n| CPX31 | $15.00/mo |',
+      hetznerUnauthorized: false,
+      sshKeyNames: ['ops-key'],
+      serverTypes: ['cpx21', 'cpx31', 'cpx41'],
+      deprecatedServerTypes: [],
+      firewallSources: ['198.51.100.7/32'],
+      cloudflareInactive: false,
       ...opts,
     };
   }
@@ -67,7 +86,7 @@ export class FakeInternet {
   /** Servers the fake believes exist; used to plant a foreign one for safety tests. */
   plant(name: string, labels: Record<string, string>, ip = '203.0.113.99'): number {
     const id = this.#nextId++;
-    this.servers.set(id, { id, name, labels, ip, user_data: '' });
+    this.servers.set(id, { id, name, labels, ip, user_data: '', created: '2026-09-20T12:00:00Z' });
     return id;
   }
 
@@ -80,7 +99,7 @@ export class FakeInternet {
   }
 
   #serverJson(s: FakeServer) {
-    return { id: s.id, name: s.name, status: 'running', labels: s.labels, public_net: { ipv4: { ip: s.ip } } };
+    return { id: s.id, name: s.name, status: 'running', created: s.created, labels: s.labels, public_net: { ipv4: { ip: s.ip } } };
   }
 
   fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -88,7 +107,7 @@ export class FakeInternet {
     const method = (init?.method ?? 'GET').toUpperCase();
     const headers = new Headers(init?.headers);
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, any>) : undefined;
-    this.requests.push({ method, host: url.host, path: url.pathname });
+    this.requests.push({ method, host: url.host, path: url.pathname, search: url.search });
 
     if (url.host === 'api.hetzner.cloud') return this.#hetzner(method, url, body);
     if (url.host === COOLIFY_HOST) return this.#coolify(method, url, headers, body);
@@ -100,6 +119,34 @@ export class FakeInternet {
 
   #hetzner(method: string, url: URL, body?: Record<string, any>): Response {
     const path = url.pathname.replace('/v1', '');
+    if (this.opts.hetznerUnauthorized) return json({ error: { code: 'unauthorized', message: 'unable to authenticate' } }, 401);
+
+    // Read-only routes used by `npm run preflight`. Shapes are from memory of the docs.
+    if (method === 'GET' && path === '/ssh_keys') {
+      return json({ ssh_keys: this.opts.sshKeyNames.map((name, i) => ({ id: 100 + i, name })), meta: { pagination: { next_page: null } } });
+    }
+    if (method === 'GET' && path === '/locations') {
+      return json({ locations: ['fsn1', 'nbg1', 'hel1'].map((name, id) => ({ id, name })) });
+    }
+    if (method === 'GET' && path === '/server_types') {
+      const want = url.searchParams.get('name');
+      const types = this.opts.serverTypes
+        .filter((n) => !want || n === want)
+        .map((name, id) => ({
+          id,
+          name,
+          deprecated: this.opts.deprecatedServerTypes.includes(name),
+          prices: [{ location: 'nbg1', price_monthly: { net: '10.92', gross: '13.00' } }],
+        }));
+      return json({ server_types: types, meta: { pagination: { next_page: null } } });
+    }
+    if (method === 'GET' && path === '/firewalls/42') {
+      const rules: Record<string, unknown>[] = [{ direction: 'in', protocol: 'tcp', port: '80', source_ips: ['0.0.0.0/0', '::/0'] }];
+      if (this.opts.firewallSources.length) {
+        rules.push({ direction: 'in', protocol: 'tcp', port: '8000', source_ips: this.opts.firewallSources });
+      }
+      return json({ firewall: { id: 42, name: 'pilot', rules } });
+    }
     if (method === 'POST' && path === '/servers') {
       const id = this.#nextId++;
       const s: FakeServer = {
@@ -108,6 +155,7 @@ export class FakeInternet {
         labels: body!.labels ?? {},
         ip: SERVER_IP,
         user_data: body!.user_data ?? '',
+        created: '2026-09-20T15:00:00Z',
       };
       this.servers.set(id, s);
       if (this.opts.hetznerLoseResponse && !this.#lostOnce) {
@@ -173,6 +221,9 @@ export class FakeInternet {
   #cloudflare(method: string, url: URL, body?: Record<string, any>): Response {
     const ok = (result: unknown) => json({ success: true, errors: [], result });
     const path = url.pathname.replace('/client/v4', '');
+    if (method === 'GET' && path === '/user/tokens/verify') {
+      return ok({ id: 'tok-1', status: this.opts.cloudflareInactive ? 'expired' : 'active' });
+    }
     if (method === 'GET' && path === '/zones') {
       return ok(url.searchParams.get('name') === 'example.com' ? [{ id: 'zone-1', name: 'example.com' }] : []);
     }

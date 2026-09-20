@@ -10,7 +10,14 @@ import { loadConfig } from './config.ts';
 import { createGatewayServer } from './server.ts';
 import { Vault } from './vault.ts';
 
-const cfg = loadConfig();
+let cfg: ReturnType<typeof loadConfig>;
+try {
+  cfg = loadConfig();
+} catch (e) {
+  // A config error is an operator mistake, not a crash: say what to fix, without a stack.
+  console.error(`varsiko-mandate-gateway: ${(e as Error).message}`);
+  process.exit(1);
+}
 
 const deps = {
   cfg,
@@ -31,7 +38,15 @@ if (!deps.vercel) notes.push('VERCEL_TOKEN unset: env export disabled');
 if (!deps.anakin) notes.push('ANAKIN_API_KEY unset: price cross-check disabled');
 if (!cfg.auditorPublicKey) notes.push('AUDITOR_PUBLIC_KEY_FILE unset: DNS cutover cannot verify an Auditor token');
 
-createGatewayServer(deps, { bearerToken: cfg.bearerToken }).listen(cfg.port, () => {
+const server = createGatewayServer(deps, { bearerToken: cfg.bearerToken }).listen(cfg.port, () => {
   console.log(`varsiko-mandate-gateway listening on :${cfg.port}  (POST /mcp)`);
   for (const n of notes) console.log(`  note: ${n}`);
 });
+
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => {
+    console.log(`${sig}: shutting down`);
+    server.close(() => process.exit(0));
+    server.closeAllConnections();
+  });
+}

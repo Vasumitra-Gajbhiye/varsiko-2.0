@@ -33,7 +33,11 @@ const readKey = (path: string | undefined, name: string, required: boolean): str
     if (required) throw new Error(`${name} is required`);
     return undefined;
   }
-  return readFileSync(path, 'utf8');
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    throw new Error(`${name}: cannot read ${path} (run \`npm run keygen\`?)`);
+  }
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {

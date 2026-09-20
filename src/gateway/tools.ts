@@ -47,7 +47,7 @@ type Args = Record<string, unknown>;
 
 const DEFAULT_RUN_WINDOW_MIN = 120;
 const ENV_BLOB_TTL_MS = 30 * 60_000;
-const SECRETS_TTL_MS = 7 * 24 * 3_600_000;
+export const SECRETS_TTL_MS = 7 * 24 * 3_600_000;
 
 // ---------------------------------------------------------------- argument helpers
 

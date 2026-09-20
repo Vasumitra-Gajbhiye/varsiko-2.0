@@ -10,6 +10,10 @@ import { PRICE_SOURCE_URL } from './pricing.ts';
  *  2. A vendor redesign mid-demo cannot break the run.
  *
  * VERIFY before the demo — these are approximations, not scraped values.
+ *
+ * TODO(live test B0): replace with the real prices from the Hetzner console. Hetzner may
+ * price in EUR while this table and the budget check are USD; `npm run mandate` prints the
+ * value it checks against so the operator sees it before signing.
  */
 export const PINNED_PRICES_USD_MONTH: Record<string, number> = {
   cx22: 4.5,
