@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Severance — find a VPS</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <h1>Severance</h1>
+      <span>Nasiko</span>
+    </div>
+    <p class="lede">
+      Paste a GitHub repo. Surveyor sizes the server. Broker shops Hetzner, DigitalOcean, and Vultr and returns pricing links.
+      Nothing is purchased.
+    </p>
+    <form class="card" id="form">
+      <label for="repo">GitHub repository</label>
+      <input id="repo" name="repo" type="url" required placeholder="https://github.com/example/lockin-heavy" />
+      <button type="submit" id="go">Find servers</button>
+    </form>
+    <div class="steps" id="steps" hidden>
+      <span data-step="surveyor">1. Surveyor</span>
+      <span data-step="broker">2. Broker</span>
+    </div>
+    <p class="err" id="error" hidden></p>
+    <div class="grid" id="results" hidden>
+      <section class="card spec" id="spec"></section>
+      <section class="card" id="plans"></section>
+    </div>
+    <footer>
+      Agents run on local Nasiko. Traces:
+      <a href="http://localhost:8080/sessions.html">Sessions</a>
+      ·
+      <a href="http://localhost:8080/index.html?view=workflows">severance-pipeline</a>
+    </footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -22,6 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from agent import SurveyorAgent
 from agent_executor import SurveyorAgentExecutor
+from a2a_compat import A2a10MethodCompat
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def main(host, port):
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    uvicorn.run(app, host=host, port=int(port))
+    uvicorn.run(A2a10MethodCompat(app), host=host, port=int(port))
 
 
 if __name__ == "__main__":

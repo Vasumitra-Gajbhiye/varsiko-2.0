@@ -74,6 +74,17 @@ def test_zero_or_negative_ceiling_is_rejected():
         assert result.mandate is None, f"minted a mandate at ceiling {ceiling}"
 
 
+def test_inbound_data_part_is_shoppable():
+    from broker.contracts import inbound_text, looks_like_spec, parse_capacity_spec
+    from broker.fixture_store import load_json
+
+    spec = load_json("spec_valid.json")
+    combined = inbound_text("", {"parts": [{"data": spec}]})
+    assert looks_like_spec(combined)
+    parsed = parse_capacity_spec(combined)
+    assert parsed.constraints.ceiling_inr_monthly == 1500
+
+
 def test_fixture_fallback_provenance_lands_in_the_mandate(spec):
     result = pipeline.run_pipeline(spec, offline=True)
     assert result.mandate.decision.url_discovered_via == "fixture-fallback"

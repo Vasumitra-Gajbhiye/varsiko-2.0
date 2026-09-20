@@ -10,6 +10,7 @@ from surveyor.cost import CostResult
 from surveyor.intake import Intake
 from surveyor.lockin_scan import ScanResult
 from surveyor.redact import redact_obj, sanitize_snippet
+from surveyor.regions import DEFAULT_REGION_ALLOWLIST
 from surveyor.verdict import Verdict
 
 
@@ -66,10 +67,15 @@ def emit_result(
 ) -> dict[str, Any]:
     ts = generated_at or isoformat_z()
     source = intake.name or intake.repo_slug or "unknown"
+    floor = capacity.spec_floor
     constraints: dict[str, Any] = {
-        "region_allowlist": intake.region_allowlist or [],
-        "region_source": intake.region_source,
-        "spec_floor": capacity.spec_floor,
+        "region_allowlist": list(intake.region_allowlist or DEFAULT_REGION_ALLOWLIST),
+        "spec_floor": {
+            "vcpu": int(floor["vcpu"]),
+            "ram_gb": int(floor["ram_gb"]),
+            "disk_gb": int(floor["disk_gb"]),
+            "egress_tb": float(floor["egress_tb"]),
+        },
         "must_support": list(MUST_SUPPORT),
     }
     if intake.ceiling_inr_monthly is not None:

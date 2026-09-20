@@ -146,7 +146,7 @@ def mint_mandate(
     ttl = ttl_seconds if ttl_seconds is not None else mandate_ttl_seconds()
     expires = issued + timedelta(seconds=ttl)
     current = current_cost_inr
-    if spec is not None:
+    if spec is not None and spec.current_cost is not None:
         current = spec.current_cost.monthly_inr
 
     via = winner.row.url_discovered_via
@@ -218,7 +218,7 @@ def mint_mandate(
         ).model_dump(mode="json"),
         "runner_up": runner.model_dump(mode="json") if runner else None,
         "rejected": [r.model_dump(mode="json") for r in rejected],
-        "savings_vs_current_inr": current - monthly,
+        "savings_vs_current_inr": (current - monthly) if current else 0,
         "lockin_inventory": (
             [item.model_dump(mode="json") for item in spec.lockin_inventory] if spec else []
         ),

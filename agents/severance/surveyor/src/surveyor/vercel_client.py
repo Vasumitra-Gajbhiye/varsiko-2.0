@@ -271,7 +271,7 @@ class VercelClient:
 def _project_from_json(item: dict[str, Any], team: str | None) -> ResolvedProject:
     region = item.get("serverlessFunctionRegion") or item.get("resourceConfig", {}).get("functionDefaultRegions", [None])[0]
     root = item.get("rootDirectory") or "."
-    fluid = bool(item.get("elasticConcurrencyEnabled") or item.get("fluid") or True)
+    fluid = bool(item.get("elasticConcurrencyEnabled") or item.get("fluid"))
     return ResolvedProject(
         team=team or item.get("accountId") or item.get("teamId"),
         project_id=str(item.get("id") or item.get("project_id")),

@@ -92,6 +92,10 @@ def test_hetzner_wins_two_distinct_rejection_reasons():
     assert do.reason == OVER_CEILING
     vultr = next(r for r in ranked.rejected if r.provider == "vultr")
     assert vultr.reason == REGION_NOT_ALLOWED
+    dumped = ranked.as_dict()
+    assert dumped["winner"]["source_url"] == "https://www.hetzner.com/cloud/"
+    assert dumped["survivors"]
+    assert dumped["survivors"][0]["provider"] == "hetzner"
 
 
 def test_ceiling_400_no_winner_reports_smallest_change():
@@ -144,6 +148,45 @@ def test_tie_break_higher_egress_then_provider_order():
     assert ranked.winner.row.plan_sku == "cheap-b"
     assert ranked.runner_up is not None
     assert ranked.runner_up.row.plan_sku == "cheap-a"
+
+
+def test_missing_disk_and_egress_do_not_fail_the_floor():
+    caps = ["docker", "cloud-init", "ipv4"]
+    row = PlanRow(
+        provider="hetzner",
+        plan_sku="cpx31",
+        vcpu=4,
+        ram_gb=8,
+        disk_gb=None,
+        egress_tb=None,
+        price=10.99,
+        currency="EUR",
+        period="monthly",
+        regions=["sin"],
+        capabilities=caps,
+    )
+    ranked = score_candidates([row], _constraints(), FX)
+    assert ranked.winner is not None
+    assert ranked.winner.row.plan_sku == "cpx31"
+
+
+def test_empty_regions_use_provider_defaults():
+    row = PlanRow.from_dict(
+        {
+            "provider": "hetzner",
+            "plan_name": "cpx31",
+            "vcpu": 4,
+            "ram_gb": 8,
+            "disk_gb": 80,
+            "egress_tb": 20,
+            "price": 10.99,
+            "currency": "EUR",
+            "period": "monthly",
+        }
+    )
+    assert "sin" in row.regions
+    ranked = score_candidates([row], _constraints(), FX)
+    assert ranked.winner is not None
 
 
 def test_hourly_converted_with_730():

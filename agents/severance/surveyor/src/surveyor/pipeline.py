@@ -322,6 +322,7 @@ def run_pipeline(
                 "constants": capacity.constants,
                 **capacity.method,
             },
+            "region_source": intake.region_source,
             "evidence_conflicts": capacity.evidence_conflicts,
             "warnings": warnings,
             "env_inventory": [

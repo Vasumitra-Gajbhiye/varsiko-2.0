@@ -173,6 +173,23 @@ def test_scrape_never_requests_a_non_allowlisted_url():
     assert result.rows == []
 
 
+def test_scrape_accepts_generated_json_string():
+    body = {
+        "status": "completed",
+        "generatedJson": json.dumps({"plans": _plans()}),
+    }
+
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(202, json={"jobId": "j", "status": "pending"})
+        return httpx.Response(200, json=body)
+
+    result = pricing.fetch_pricing(
+        "hetzner", HETZNER_URL, client=_client(handler), offline=False, poll_interval=0
+    )
+    assert len(result.rows) == len(_plans())
+
+
 def test_scrape_flags_injection_in_live_payload():
     plans = _plans()
     body = {

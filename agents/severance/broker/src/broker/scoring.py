@@ -15,6 +15,12 @@ UNDER_SPEC_FLOOR = "UNDER_SPEC_FLOOR"
 MISSING_CAPABILITY = "MISSING_CAPABILITY"
 
 
+def _optional_float(data: dict[str, Any], key: str) -> float | None:
+    if key not in data or data[key] is None or data[key] == "":
+        return None
+    return float(data[key])
+
+
 @dataclass
 class PlanRow:
     provider: str
@@ -24,8 +30,8 @@ class PlanRow:
     price: float
     currency: str
     period: str
-    disk_gb: float = 0
-    egress_tb: float = 0
+    disk_gb: float | None = None
+    egress_tb: float | None = None
     regions: list[str] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
     source_url: str = ""
@@ -45,18 +51,24 @@ class PlanRow:
                 caps = list(get_provider(pid).capabilities)
             except KeyError:
                 caps = []
+        regions = [str(r) for r in (data.get("regions") or [])]
+        if not regions:
+            try:
+                regions = list(get_provider(pid).default_regions)
+            except KeyError:
+                regions = []
         return cls(
             provider=pid,
             plan_sku=sku,
             listed_name=str(data.get("plan_name") or sku),
             vcpu=float(data.get("vcpu") or 0),
             ram_gb=float(data.get("ram_gb") or 0),
-            disk_gb=float(data.get("disk_gb") or 0),
-            egress_tb=float(data.get("egress_tb") or 0),
+            disk_gb=_optional_float(data, "disk_gb"),
+            egress_tb=_optional_float(data, "egress_tb"),
             price=float(data.get("price") or 0),
             currency=str(data.get("currency") or "USD"),
             period=str(data.get("period") or "monthly"),
-            regions=[str(r) for r in (data.get("regions") or [])],
+            regions=regions,
             capabilities=[str(c) for c in caps],
             source_url=str(data.get("source_url") or ""),
             url_discovered_via=str(data.get("url_discovered_via") or "anakin-search"),
@@ -127,6 +139,7 @@ class RankedResult:
         out: dict[str, Any] = {
             "winner": dump_scored(self.winner),
             "runner_up": dump_scored(self.runner_up),
+            "survivors": [dump_scored(item) for item in self.survivors],
             "rejected": [
                 {
                     "provider": r.provider,
@@ -154,7 +167,12 @@ def _under_floor(row: PlanRow, floor: SpecFloor) -> str | None:
         ("disk_gb", row.disk_gb, floor.disk_gb),
         ("egress_tb", row.egress_tb, floor.egress_tb),
     )
-    failed = [f"{name} {actual} < {need}" for name, actual, need in checks if actual < need]
+    failed = []
+    for name, actual, need in checks:
+        if actual is None:
+            continue
+        if actual < need:
+            failed.append(f"{name} {actual} < {need}")
     if failed:
         return "; ".join(failed)
     return None
@@ -245,7 +263,12 @@ def score_candidates(
         survivors.append(scored)
 
     survivors.sort(
-        key=lambda s: (s.monthly_inr, -s.row.egress_tb, provider_index(s.row.provider), s.row.plan_sku)
+        key=lambda s: (
+            s.monthly_inr,
+            -(s.row.egress_tb or 0),
+            provider_index(s.row.provider),
+            s.row.plan_sku,
+        )
     )
     winner = survivors[0] if survivors else None
     runner_up = survivors[1] if len(survivors) > 1 else None

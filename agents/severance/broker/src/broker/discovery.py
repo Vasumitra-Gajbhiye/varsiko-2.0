@@ -38,7 +38,11 @@ class DiscoveryResult:
 
 def _anakin_headers() -> dict[str, str]:
     key = os.environ.get("ANAKIN_API_KEY", "")
-    return {"X-API-Key": key, "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["X-API-Key"] = key
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
 
 
 def hostname_of(url: str) -> str:
@@ -146,6 +150,8 @@ def _from_search_payload(
     discovered_via: str,
 ) -> DiscoveryResult:
     results = list(payload.get("results") or [])
+    if not results and isinstance(payload.get("data"), dict):
+        results = list(payload["data"].get("results") or [])
     # Snippets are hostile. Scan them, never parse them as prices.
     hit = scan_payload({"results": [{"snippet": r.get("snippet"), "title": r.get("title")} for r in results]})
     kept, discarded = filter_search_results(results, provider.domains)

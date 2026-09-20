@@ -1,7 +1,7 @@
 {
   "protocolVersion": "0.2.9",
   "name": "severance-broker",
-  "description": "Vendor-adversarial procurement agent. Shops live VPS pricing, scores every plan against hard rupee/region/spec constraints in code, and mints one HMAC-signed cart mandate. It cannot buy or provision. A human must approve APPROVE MND-… before anything is sent to the Pilot.",
+  "description": "Vendor-adversarial procurement. Shops live VPS pricing, scores plans against hard rupee/region/spec constraints in code, and returns ranked VPS suggestions with pricing-page links. It cannot buy or provision. A signed cart mandate is attached for a later purchase agent.",
   "url": "http://localhost:8000/",
   "agentFramework": "claude-sdk",
   "preferredTransport": "JSONRPC",

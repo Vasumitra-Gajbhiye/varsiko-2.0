@@ -142,7 +142,10 @@ class SurveyorAgentExecutor(AgentExecutor):
 
         if result.document is not None:
             payload = json.dumps(result.document, default=str)
-            await updater.add_artifact([_json_part(payload)], name="surveyor_result.json")
+            await updater.add_artifact(
+                [Part(root=TextPart(text=payload)), _json_part(payload)],
+                name="surveyor_result.json",
+            )
             await updater.add_artifact(
                 [Part(root=TextPart(text=result.card or render_card(result.document)))],
                 name="surveyor_card",

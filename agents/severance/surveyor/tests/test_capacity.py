@@ -16,10 +16,10 @@ def test_golden_series_capacity_and_floor():
     assert result.ram_gb == 4
     assert result.disk_gb == 60
     assert result.egress_tb == 1.5
-    assert result.spec_floor["vcpu"] == 5
-    assert result.spec_floor["ram_gb"] == 6
-    assert result.spec_floor["disk_gb"] == 90
-    assert result.spec_floor["egress_tb"] == 2.25
+    assert result.spec_floor["vcpu"] == 3
+    assert result.spec_floor["ram_gb"] == 4
+    assert result.spec_floor["disk_gb"] == 60
+    assert result.spec_floor["egress_tb"] == 1.5
     assert isinstance(result.vcpu, int)
     assert isinstance(result.ram_gb, int)
     assert isinstance(result.disk_gb, int)

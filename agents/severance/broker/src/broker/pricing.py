@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -58,7 +59,36 @@ class FetchResult:
 
 def _anakin_headers() -> dict[str, str]:
     key = os.environ.get("ANAKIN_API_KEY", "")
-    return {"X-API-Key": key, "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["X-API-Key"] = key
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def _extract_plans(payload: Any, *, _depth: int = 0) -> list[dict[str, Any]]:
+    """Anakin returns plans as an object, a JSON string, or nested under generatedJson/data."""
+    if _depth > 4 or payload is None:
+        return []
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(payload, list):
+        return [p for p in payload if isinstance(p, dict)]
+    if not isinstance(payload, dict):
+        return []
+    plans = payload.get("plans")
+    if isinstance(plans, list):
+        return [p for p in plans if isinstance(p, dict)]
+    for key in ("generatedJson", "generated_json", "output", "data", "result"):
+        nested = payload.get(key)
+        if nested:
+            found = _extract_plans(nested, _depth=_depth + 1)
+            if found:
+                return found
+    return []
 
 
 def _offline() -> bool:
@@ -120,7 +150,7 @@ def fetch_pricing(
         wrap_untrusted(str(payload), url)
         rows = _rows_from_plans(
             provider_id,
-            list(payload.get("plans") or []),
+            _extract_plans(payload),
             url=url,
             discovered_via=discovered_via,
             scraped_at=scraped_at,
@@ -189,7 +219,7 @@ def fetch_pricing(
                         provider_id, url, discovered_via, unreachable=True, detail="scrape poll timeout"
                     )
             generated = payload.get("generatedJson") or payload
-            plans = generated.get("plans") if isinstance(generated, dict) else None
+            plans = _extract_plans(generated) or _extract_plans(payload)
             if not plans:
                 return _offline_fallback(
                     provider_id, url, discovered_via, detail="scrape yielded no plan rows"
@@ -267,7 +297,7 @@ def _offline_fallback(
     hit = scan_payload(payload)
     rows = _rows_from_plans(
         provider_id,
-        list(payload.get("plans") or []),
+        _extract_plans(payload),
         url=url,
         discovered_via="fixture-fallback",
         scraped_at=scraped_at,

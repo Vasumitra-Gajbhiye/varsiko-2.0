@@ -118,16 +118,21 @@ def test_agent_card_is_served_unauthenticated(rpc):
     run(go())
 
 
-def test_spec_parks_task_in_input_required_with_signed_mandate(rpc, emitted):
+def test_spec_completes_with_shop_result_and_signed_mandate(rpc, emitted):
     async def go():
         result = await rpc(SPEC, "ctx-1")
-        assert result["status"]["state"] == "input-required"
+        assert result["status"]["state"] == "completed"
         names = [a.get("name") for a in result.get("artifacts", [])]
         assert "cart_mandate" in names
+        assert "shop_result" in names
         mandate = json.loads(next(p["text"] for a in result["artifacts"] if a["name"] == "cart_mandate"
-                                  for p in a["parts"]))
+                                  for p in a["parts"] if p.get("text")))
+        shop = json.loads(next(p["text"] for a in result["artifacts"] if a["name"] == "shop_result"
+                               for p in a["parts"] if p.get("text")))
         assert mandate["decision"]["provider"] == "hetzner"
         assert mandate["approval"]["status"] == "pending"
+        assert shop["winner"]["provider"] == "hetzner"
+        assert shop["winner"]["source_url"]
         assert emitted == [], "nothing may be sent to the Pilot before approval"
 
     run(go())

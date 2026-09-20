@@ -49,8 +49,8 @@ nasiko run
 # other terminal:
 nasiko chat http://localhost:8000 --tui
 # paste src/broker/fixtures/spec_valid.json
-# task parks at input-required with the purchase-order card
-nasiko chat http://localhost:8000 --session-id <id> "APPROVE MND-…"
+# task completes with ranked VPS links (cart_mandate + shop_result artifacts)
+# later purchase: nasiko chat http://localhost:8000 --session-id <id> "APPROVE MND-…"
 ```
 
 Without Nasiko CLI:

@@ -1,0 +1,11 @@
+.venv
+.venv312
+.env
+.nasiko
+tests
+__pycache__
+.pytest_cache
+*.pyc
+.DS_Store
+.git
+uv.lock

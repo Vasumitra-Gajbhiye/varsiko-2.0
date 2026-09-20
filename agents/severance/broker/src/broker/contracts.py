@@ -33,12 +33,16 @@ class SpecError(Exception):
 
 
 class CurrentCost(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     monthly_inr: int
     billing_currency: str
     evidence: str
 
 
 class Capacity(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     vcpu: int
     ram_gb: int
     disk_gb: int
@@ -48,6 +52,8 @@ class Capacity(BaseModel):
 
 
 class SpecFloor(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     vcpu: int
     ram_gb: int
     disk_gb: int
@@ -55,8 +61,10 @@ class SpecFloor(BaseModel):
 
 
 class Constraints(BaseModel):
-    ceiling_inr_monthly: int
-    region_allowlist: list[str]
+    model_config = ConfigDict(extra="allow")
+
+    ceiling_inr_monthly: int = Field(gt=0)
+    region_allowlist: list[str] = Field(default_factory=list)
     spec_floor: SpecFloor
     must_support: list[str] = Field(default_factory=list)
 
@@ -74,10 +82,11 @@ class CapacitySpec(BaseModel):
     )
     generated_at: str
     source_project: str
-    current_cost: CurrentCost
+    current_cost: CurrentCost | None = None
     capacity: Capacity
     constraints: Constraints
     lockin_inventory: list[LockinFeature] = Field(default_factory=list)
+    decision: dict[str, Any] | None = None
 
     def constraints_payload(self) -> dict[str, Any]:
         return self.constraints.model_dump(mode="json")
@@ -230,6 +239,22 @@ def parse_capacity_spec_obj(data: dict[str, Any]) -> CapacitySpec:
             "constraints.ceiling_inr_monthly is required and is never inferred",
             "constraints.ceiling_inr_monthly",
         )
+    decision = data.get("decision")
+    if isinstance(decision, dict):
+        verdict = decision.get("verdict")
+        if verdict == "BLOCKED":
+            blockers = ", ".join(decision.get("blockers") or []) or "unspecified"
+            raise SpecError(
+                "SURVEY_BLOCKED",
+                f"Surveyor verdict is BLOCKED ({blockers}); the Broker will not shop.",
+                "decision.verdict",
+            )
+        if verdict == "NEEDS_INPUT":
+            raise SpecError(
+                "SURVEY_NEEDS_INPUT",
+                "Surveyor parked this spec as NEEDS_INPUT. Complete the survey before shopping.",
+                "decision.verdict",
+            )
     try:
         return CapacitySpec.model_validate(data)
     except ValidationError as exc:
@@ -247,6 +272,41 @@ def looks_like_spec(text: str) -> bool:
         except OSError:
             return False
     return False
+
+
+def _part_payload(part: Any) -> tuple[str | None, Any]:
+    root = getattr(part, "root", part)
+    if isinstance(part, dict):
+        root = part.get("root", part)
+    if isinstance(root, dict):
+        return (
+            root.get("text") if isinstance(root.get("text"), str) else None,
+            root.get("data"),
+        )
+    text = getattr(root, "text", None)
+    data = getattr(root, "data", None)
+    return (text if isinstance(text, str) else None, data)
+
+
+def inbound_text(query: str, message: Any = None) -> str:
+    """Merge A2A text parts and DataPart JSON so a Surveyor artifact is shoppable."""
+    chunks: list[str] = []
+    if query and str(query).strip():
+        chunks.append(str(query))
+    parts: list[Any] = []
+    if message is not None:
+        parts = list(getattr(message, "parts", None) or [])
+        if not parts and isinstance(message, dict):
+            parts = list(message.get("parts") or [])
+    for part in parts:
+        text, data = _part_payload(part)
+        if isinstance(data, dict):
+            dumped = json.dumps(data)
+            if dumped not in chunks:
+                chunks.append(dumped)
+        if text and text not in chunks:
+            chunks.append(text)
+    return "\n".join(chunks)
 
 
 def utc_now() -> datetime:

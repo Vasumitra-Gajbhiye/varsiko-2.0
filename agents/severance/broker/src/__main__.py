@@ -22,6 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from agent import BrokerAgent
 from agent_executor import BrokerAgentExecutor
+from a2a_compat import A2a10MethodCompat
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def main(host, port):
     agent_url = os.getenv("HOST_OVERRIDE", f"http://{host}:{port}/")
     agent_card = AgentCard(
         name="severance-broker",
-        description="Vendor-adversarial procurement. Shops live VPS pricing, scores under hard rupee constraints in code, mints one signed cart mandate, and waits for a human. Cannot buy or provision.",
+        description="Vendor-adversarial procurement. Shops live VPS pricing, scores under hard rupee constraints in code, and returns ranked VPS suggestions with pricing-page links. Cannot buy or provision.",
         url=agent_url,
         version="0.1.0",
         default_input_modes=BrokerAgent.SUPPORTED_CONTENT_TYPES,
@@ -79,7 +80,7 @@ def main(host, port):
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(A2a10MethodCompat(app), host=host, port=port)
 
 
 if __name__ == "__main__":

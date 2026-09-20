@@ -317,12 +317,16 @@ def derive_capacity(
 def _spec_floor(
     vcpu: int, ram: int, disk: int, egress: float, hf: float, const: dict[str, Any]
 ) -> dict[str, Any]:
+    # Shop the derived demand, clamped to named mins. Capacity already includes
+    # burst_factor (CPU) and headroom (disk); multiplying again landed between
+    # Hetzner CPX31 and CPX41 and made the Surveyor file unshoppable.
     return {
-        "vcpu": max(int(math.ceil(vcpu * hf)), int(const["floor_min_vcpu"])),
-        "ram_gb": max(int(math.ceil(ram * hf)), int(const["floor_min_ram_gb"])),
-        "disk_gb": max(int(math.ceil(disk * hf)), int(const["floor_min_disk_gb"])),
-        "egress_tb": round(egress * hf, 4),
+        "vcpu": max(int(vcpu), int(const["floor_min_vcpu"])),
+        "ram_gb": max(int(ram), int(const["floor_min_ram_gb"])),
+        "disk_gb": max(int(disk), int(const["floor_min_disk_gb"])),
+        "egress_tb": round(float(egress), 4),
         "source": "rule:spec_floor",
+        "headroom_recorded": hf,
     }
 
 

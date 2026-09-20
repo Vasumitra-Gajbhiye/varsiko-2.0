@@ -1,7 +1,8 @@
-"""A2A task lifecycle, including the approval pause."""
+"""A2A task lifecycle. Shopping completes; APPROVE remains for a later purchase agent."""
 
 from __future__ import annotations
 
+import json
 import logging
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -13,12 +14,24 @@ from a2a.utils.errors import ServerError
 
 from agent import BrokerAgent
 from broker.approval import PendingGate, evaluate_approval, parse_approve
-from broker.card import render_approval_card
-from broker.contracts import looks_like_spec
+from broker.card import render_approval_card, render_shop_card
+from broker.contracts import looks_like_spec, inbound_text
 from broker.emit import emit_to_pilot
 from broker.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
+
+
+def _json_part(text: str) -> Part:
+    try:
+        from a2a.types import DataPart
+
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return Part(root=DataPart(data=data))
+    except Exception:
+        pass
+    return Part(root=TextPart(text=text))
 
 
 def _nasiko_token(context: RequestContext) -> str | None:
@@ -38,7 +51,7 @@ class BrokerAgentExecutor(AgentExecutor):
         self.pending: dict[str, PendingGate] = {}
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        query = context.get_user_input()
+        query = inbound_text(context.get_user_input() or "", getattr(context, "message", None))
         task = context.current_task
         if not task:
             task = new_task(context.message)
@@ -73,15 +86,31 @@ class BrokerAgentExecutor(AgentExecutor):
                     ranked=result.ranked,
                 )
                 self.pending[context_id] = gate
+                shop = {
+                    "schema": "severance.shop_result/v1",
+                    "mandate_id": result.mandate.mandate_id,
+                    **(result.ranked.as_dict() if result.ranked else {}),
+                }
+                shop_text = json.dumps(shop, default=str)
+                mandate_text = result.mandate.model_dump_json(by_alias=True)
+                card = render_shop_card(shop, result.mandate)
                 await updater.add_artifact(
-                    [Part(root=TextPart(text=result.mandate.model_dump_json(by_alias=True)))],
+                    [Part(root=TextPart(text=mandate_text)), _json_part(mandate_text)],
                     name="cart_mandate",
                 )
-                await updater.update_status(
-                    TaskState.input_required,
-                    new_agent_text_message(gate.card, task.context_id, task.id),
-                    final=True,
+                await updater.add_artifact(
+                    [Part(root=TextPart(text=shop_text)), _json_part(shop_text)],
+                    name="shop_result",
                 )
+                await updater.add_artifact(
+                    [Part(root=TextPart(text=card))],
+                    name="shop_card",
+                )
+                await updater.update_status(
+                    TaskState.working,
+                    new_agent_text_message(card, task.context_id, task.id),
+                )
+                await updater.complete()
                 return
 
             extra = ""

@@ -14,6 +14,7 @@ class Provider:
     fallback_url: str
     capabilities: tuple[str, ...]
     plan_family: str
+    default_regions: tuple[str, ...]
 
 
 PROVIDERS: dict[str, Provider] = {
@@ -25,6 +26,7 @@ PROVIDERS: dict[str, Provider] = {
         fallback_url="https://www.hetzner.com/cloud/",
         capabilities=("docker", "cloud-init", "ipv4"),
         plan_family="CPX",
+        default_regions=("sin", "fsn1", "nbg1", "hel1"),
     ),
     "digitalocean": Provider(
         id="digitalocean",
@@ -34,6 +36,7 @@ PROVIDERS: dict[str, Provider] = {
         fallback_url="https://www.digitalocean.com/pricing/droplets",
         capabilities=("docker", "cloud-init", "ipv4"),
         plan_family="basic-droplet",
+        default_regions=("sgp1", "blr1", "nyc1"),
     ),
     "vultr": Provider(
         id="vultr",
@@ -43,6 +46,8 @@ PROVIDERS: dict[str, Provider] = {
         fallback_url="https://www.vultr.com/pricing/",
         capabilities=("docker", "cloud-init", "ipv4"),
         plan_family="vc2",
+        # Fra-only when Anakin omits regions so the demo still shows REGION_NOT_ALLOWED.
+        default_regions=("fra",),
     ),
 }
 
@@ -80,7 +85,10 @@ REGION_ALIASES: dict[str, frozenset[str]] = {
             "bom1",
         }
     ),
-    "fra": frozenset({"fra", "frankfurt", "eu-central"}),
+    "fra": frozenset({"fra", "frankfurt", "eu-central", "fsn1", "nbg1", "hel1"}),
+    "iad": frozenset({"iad", "iad1", "ash", "ashburn", "us-east"}),
+    "sfo": frozenset({"sfo", "sfo1", "hil", "hillsboro", "us-west"}),
+    "gru": frozenset({"gru", "gru1", "sao-paulo", "saopaulo"}),
 }
 
 
@@ -103,7 +111,9 @@ def normalize_region_token(token: str) -> str:
 
 
 def regions_overlap_allowlist(offered: list[str], allowlist: list[str]) -> tuple[bool, str | None]:
-    """Return (ok, matched_canonical_or_none)."""
+    """Return (ok, matched_canonical_or_none). Empty allowlist means no region constraint."""
+    if not allowlist:
+        return True, None
     offered_norm = {normalize_region_token(r) for r in offered}
     for canonical in allowlist:
         aliases = REGION_ALIASES.get(canonical, frozenset({normalize_region_token(canonical)}))
