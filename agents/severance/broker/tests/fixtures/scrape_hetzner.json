@@ -1,0 +1,26 @@
+{
+  "plans": [
+    {
+      "plan_name": "CPX21",
+      "vcpu": 3,
+      "ram_gb": 4,
+      "disk_gb": 80,
+      "egress_tb": 20,
+      "price": 7.59,
+      "currency": "EUR",
+      "period": "monthly",
+      "regions": ["sin", "fsn1", "nbg1"]
+    },
+    {
+      "plan_name": "cpx31",
+      "vcpu": 4,
+      "ram_gb": 8,
+      "disk_gb": 80,
+      "egress_tb": 20,
+      "price": 10.99,
+      "currency": "EUR",
+      "period": "monthly",
+      "regions": ["sin", "fsn1", "nbg1", "hel1"]
+    }
+  ]
+}

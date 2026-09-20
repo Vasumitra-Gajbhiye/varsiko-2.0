@@ -1,0 +1,15 @@
+{
+  "plans": [
+    {
+      "plan_name": "s-4vcpu-8gb",
+      "vcpu": 4,
+      "ram_gb": 8,
+      "disk_gb": 160,
+      "egress_tb": 5,
+      "price": 48,
+      "currency": "USD",
+      "period": "monthly",
+      "regions": ["sgp1", "blr1", "nyc1"]
+    }
+  ]
+}

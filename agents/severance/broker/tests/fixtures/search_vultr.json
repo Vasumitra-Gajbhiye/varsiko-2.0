@@ -1,0 +1,12 @@
+{
+  "id": "fixture-search-vultr",
+  "results": [
+    {
+      "url": "https://www.vultr.com/pricing/",
+      "title": "Vultr Cloud Compute pricing",
+      "snippet": "Cloud Compute instances. Frankfurt and other regions.",
+      "date": "2026-09-01",
+      "last_updated": "2026-09-10"
+    }
+  ]
+}
