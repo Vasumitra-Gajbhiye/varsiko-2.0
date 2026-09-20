@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" role="img" aria-label="Varsiko: four A2A agents migrate a Vercel app to a server you own, spending only on a human's signature. Surveyor, Porter, Broker and Pilot feed a mandate gateway that holds every credential.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B121A"/>
+      <stop offset="1" stop-color="#111C27"/>
+    </linearGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E2933F"/>
+      <stop offset="1" stop-color="#55B6C2"/>
+    </linearGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#55B6C2"/>
+    </marker>
+    <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#E2933F"/>
+    </marker>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1E2B38" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="380" rx="14" fill="url(#bg)"/>
+  <rect width="1200" height="380" rx="14" fill="url(#grid)" opacity="0.55"/>
+  <rect x="0.5" y="0.5" width="1199" height="379" rx="14" fill="none" stroke="#25333F"/>
+
+  <!-- title block -->
+  <text x="56" y="70" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" letter-spacing="3" fill="#708294">VARSIKO / SEVERANCE  ·  AGENTIC MIGRATION</text>
+  <text x="56" y="140" font-family="'IBM Plex Sans Condensed','Segoe UI',system-ui,sans-serif" font-size="58" font-weight="700" fill="#DEE7EF">Leave Vercel.</text>
+  <text x="56" y="204" font-family="'IBM Plex Sans Condensed','Segoe UI',system-ui,sans-serif" font-size="58" font-weight="700" fill="#E2933F">On a human's signature.</text>
+  <rect x="56" y="226" width="220" height="3" rx="1.5" fill="url(#rule)"/>
+  <text x="56" y="262" font-family="'Segoe UI',system-ui,sans-serif" font-size="18" fill="#9CACBA">Four A2A agents. One rupee ceiling. Zero credentials on the agent.</text>
+  <text x="56" y="288" font-family="'Segoe UI',system-ui,sans-serif" font-size="18" fill="#9CACBA">All spend authority lives in a separate process that re-verifies</text>
+  <text x="56" y="314" font-family="'Segoe UI',system-ui,sans-serif" font-size="18" fill="#9CACBA">an Ed25519 signature on every single call.</text>
+
+  <!-- agent chain -->
+  <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
+    <rect x="690" y="52" width="230" height="46" rx="4" fill="#16212C" stroke="#41576B" stroke-width="1.4"/>
+    <text x="706" y="72" font-size="13" fill="#DEE7EF">01 Surveyor</text>
+    <text x="706" y="88" font-size="11" fill="#708294">reads · predicts</text>
+
+    <rect x="950" y="52" width="200" height="46" rx="4" fill="#16212C" stroke="#41576B" stroke-width="1.4"/>
+    <text x="966" y="72" font-size="13" fill="#DEE7EF">03 Porter</text>
+    <text x="966" y="88" font-size="11" fill="#708294">rewrites a copy</text>
+
+    <rect x="690" y="130" width="230" height="46" rx="4" fill="#16212C" stroke="#41576B" stroke-width="1.4"/>
+    <text x="706" y="150" font-size="13" fill="#DEE7EF">02 Broker</text>
+    <text x="706" y="166" font-size="11" fill="#708294">mints, cannot buy</text>
+
+    <rect x="950" y="130" width="200" height="46" rx="4" fill="#16212C" stroke="#E2933F" stroke-width="1.8"/>
+    <text x="966" y="150" font-size="13" fill="#DEE7EF">04 Pilot</text>
+    <text x="966" y="166" font-size="11" fill="#E2933F">0 credentials</text>
+  </g>
+  <path d="M920 75 L944 75" stroke="#55B6C2" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+  <path d="M1050 98 L1050 112 L805 112 L805 124" stroke="#55B6C2" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+  <path d="M920 153 L944 153" stroke="#55B6C2" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+
+  <!-- stance gate -->
+  <path d="M1050 176 L1050 214" stroke="#E2933F" stroke-width="2.2" fill="none"/>
+  <polygon points="1050,196 1062,208 1050,220 1038,208" fill="#16212C" stroke="#E2933F" stroke-width="1.8"/>
+  <path d="M1050 220 L1050 250" stroke="#E2933F" stroke-width="2.2" fill="none" marker-end="url(#as)"/>
+  <text x="1074" y="204" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#E2933F">Nasiko stance gate</text>
+  <text x="1074" y="219" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#708294">allow · ask · block</text>
+
+  <!-- gateway -->
+  <rect x="690" y="256" width="460" height="82" rx="4" fill="#16212C" stroke="#E2933F" stroke-width="1.8"/>
+  <text x="708" y="282" font-family="'IBM Plex Sans Condensed','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5" fill="#DEE7EF">MANDATE GATEWAY  :8787</text>
+  <text x="708" y="304" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#9CACBA">verify sig · pin every arg · enforce cap · write-ahead ledger</text>
+  <text x="708" y="324" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#E2933F">holds every provider key  →  Hetzner · Coolify · Cloudflare</text>
+</svg>
