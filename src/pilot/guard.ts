@@ -1,4 +1,4 @@
-import type { Mandate } from './mandate.ts';
+import { SANITY_MAX_USD, SANITY_MIN_USD, type Mandate } from './mandate.ts';
 import { PRICE_SOURCE_URL } from './pricing.ts';
 
 /**
@@ -25,13 +25,15 @@ export const PINNED_PRICES_USD_MONTH: Record<string, number> = {
   cpx51: 60.0,
 };
 
-/** Refuse anything outside this band even if the table or a scrape says otherwise. */
-const SANITY_MIN_USD = 1;
-const SANITY_MAX_USD = 500;
-
 export type Decision =
   | { allow: true; estimated_monthly_usd: number }
   | { allow: false; code: string; reason: string };
+
+const wrongProvider = (toolName: string): Decision => ({
+  allow: false,
+  code: 'WRONG_PROVIDER',
+  reason: `${toolName} does not apply to this mandate's provision.provider`,
+});
 
 function scopeCovers(scope: string[], action: string): boolean {
   return scope.some((entry) => {
@@ -62,15 +64,17 @@ export function authorize(
 
   switch (toolName) {
     case 'hetzner:server.create': {
+      const prov = mandate.provision;
+      if (prov.provider !== 'hetzner') return wrongProvider(toolName);
       if (!scopeCovers(mandate.scope, 'hetzner:server.create')) {
         return { allow: false, code: 'OUT_OF_SCOPE', reason: 'mandate scope excludes hetzner:server.create' };
       }
       const pinned: [string, unknown, unknown][] = [
-        ['server_type', args.server_type, mandate.provision.server_type],
-        ['image', args.image, mandate.provision.image],
-        ['location', args.location, mandate.provision.location],
-        ['count', args.count, mandate.provision.count],
-        ['cloud_init_sha256', args.cloud_init_sha256, mandate.provision.cloud_init_sha256],
+        ['server_type', args.server_type, prov.server_type],
+        ['image', args.image, prov.image],
+        ['location', args.location, prov.location],
+        ['count', args.count, prov.count],
+        ['cloud_init_sha256', args.cloud_init_sha256, prov.cloud_init_sha256],
       ];
       for (const [field, got, want] of pinned) {
         if (got !== want) {
@@ -81,14 +85,14 @@ export function authorize(
           };
         }
       }
-      const unit = prices[mandate.provision.server_type];
+      const unit = prices[prov.server_type];
       if (unit === undefined) {
-        return { allow: false, code: 'UNPRICED', reason: `no pinned price for ${mandate.provision.server_type}` };
+        return { allow: false, code: 'UNPRICED', reason: `no pinned price for ${prov.server_type}` };
       }
       if (unit < SANITY_MIN_USD || unit > SANITY_MAX_USD) {
         return { allow: false, code: 'PRICE_INSANE', reason: `price ${unit} outside sanity band` };
       }
-      const estimated = unit * mandate.provision.count;
+      const estimated = unit * prov.count;
       if (estimated > mandate.budget.max_monthly_usd) {
         return {
           allow: false,
@@ -168,9 +172,30 @@ export function authorize(
       return { allow: true, estimated_monthly_usd: 0 };
     }
 
+    // Handoff lane: a human buys the server, so there is no spend to authorise. These are
+    // scope-checked and confined to handoff mandates; who may CALL them (operator vs agent)
+    // is decided by the gateway's role split, not here.
+    case 'handoff:prepare':
+    case 'handoff:register':
+    case 'handoff:status': {
+      if (mandate.provision.provider !== 'handoff') return wrongProvider(toolName);
+      if (!scopeCovers(mandate.scope, toolName)) {
+        return { allow: false, code: 'OUT_OF_SCOPE', reason: `mandate scope excludes ${toolName}` };
+      }
+      return { allow: true, estimated_monthly_usd: 0 };
+    }
+
     // Rollback tools: scope-checked here; the gateway additionally confines them to
     // resources this same mandate created.
-    case 'hetzner:server.delete':
+    case 'hetzner:server.delete': {
+      // A handoff run never destroys anything: Pilot did not buy the server.
+      if (mandate.provision.provider !== 'hetzner') return wrongProvider(toolName);
+      if (!scopeCovers(mandate.scope, toolName)) {
+        return { allow: false, code: 'OUT_OF_SCOPE', reason: `mandate scope excludes ${toolName}` };
+      }
+      return { allow: true, estimated_monthly_usd: 0 };
+    }
+
     case 'cloudflare:dns.rollback': {
       if (!scopeCovers(mandate.scope, toolName)) {
         return { allow: false, code: 'OUT_OF_SCOPE', reason: `mandate scope excludes ${toolName}` };

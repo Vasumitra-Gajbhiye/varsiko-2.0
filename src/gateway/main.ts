@@ -36,9 +36,10 @@ if (!cfg.hetznerFirewallId) notes.push('no HETZNER_FIREWALL_ID: server creation 
 if (!deps.cloudflare) notes.push('CLOUDFLARE_TOKEN unset: DNS cutover tools disabled');
 if (!deps.vercel) notes.push('VERCEL_TOKEN unset: env export disabled');
 if (!deps.anakin) notes.push('ANAKIN_API_KEY unset: price cross-check disabled');
+if (!cfg.operatorToken) notes.push('GATEWAY_OPERATOR_TOKEN unset: handoff prepare/register tools are disabled');
 if (!cfg.auditorPublicKey) notes.push('AUDITOR_PUBLIC_KEY_FILE unset: DNS cutover cannot verify an Auditor token');
 
-const server = createGatewayServer(deps, { bearerToken: cfg.bearerToken }).listen(cfg.port, () => {
+const server = createGatewayServer(deps, { bearerToken: cfg.bearerToken, operatorToken: cfg.operatorToken }).listen(cfg.port, () => {
   console.log(`varsiko-mandate-gateway listening on :${cfg.port}  (POST /mcp)`);
   for (const n of notes) console.log(`  note: ${n}`);
 });

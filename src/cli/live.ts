@@ -25,7 +25,7 @@ export interface LiveDeps {
   signal?: AbortSignal;
 }
 
-const TERMINAL = new Set<RunState['status']>(['DEPLOYED', 'CUTOVER', 'FAILED', 'ROLLED_BACK']);
+const TERMINAL = new Set<RunState['status']>(['DEPLOYED', 'CUTOVER', 'FAILED', 'ROLLED_BACK', 'AWAITING_HUMAN_PURCHASE']);
 const EXIT_INTERRUPTED = 130;
 
 const USAGE = `Usage:
@@ -160,7 +160,8 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
   const baseProviders = (auditorToken?: string): Providers => nasikoProviders(gw, { mandate: token, runId, auditorToken });
 
   // ---- shared pieces -------------------------------------------------------------------
-  const pinned = PINNED_PRICES_USD_MONTH[mandate.provision.server_type];
+  const prov = mandate.provision;
+  const pinned = prov.provider === 'hetzner' ? PINNED_PRICES_USD_MONTH[prov.server_type] : undefined;
   const dnsAllowed = mandate.scope.some((s) => s === 'cloudflare:*' || s === 'cloudflare:dns.upsert');
   const expired = Date.parse(mandate.exp) < (deps.now ?? (() => new Date()))().getTime();
   const maxPolls = v['max-polls'] ? Number(v['max-polls']) : Math.max(20, pollSeconds > 0 ? Math.ceil(BOOT_BUDGET_SECONDS / pollSeconds) : 20);
@@ -172,8 +173,12 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
     out('='.repeat(72));
     out(`  DIRECT MODE: Nasiko is bypassed, so no Nasiko approval or audit applies`);
     out(`  run id        ${runId}     mandate ${mandate.mandate_id}`);
-    out(`  server        1 x ${mandate.provision.server_type} in ${mandate.provision.location}   cap $${mandate.budget.max_monthly_usd}/mo` +
-      (pinned ? `   (~$${(pinned / 730).toFixed(3)}/hour at the pinned $${pinned}/mo)` : ''));
+    if (prov.provider === 'handoff') {
+      out(`  server        1 x ${prov.plan} (${prov.vendor}, ${prov.region}) bought BY A HUMAN; expected $${prov.expected_monthly_usd}/mo, unverified`);
+    } else {
+      out(`  server        1 x ${prov.server_type} in ${prov.location}   cap $${mandate.budget.max_monthly_usd}/mo` +
+        (pinned ? `   (~$${(pinned / 730).toFixed(3)}/hour at the pinned $${pinned}/mo)` : ''));
+    }
     out(`  repository    ${mandate.migration.git_repository}@${mandate.migration.git_branch}`);
     out(`  DNS           ${dnsAllowed ? `ENABLED for ${mandate.migration.domain} (only via --cutover)` : 'disabled (cloudflare not in scope)'}`);
     for (const l of extra) out(`  ${l}`);
@@ -204,6 +209,11 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
 
   // ---- cleanup -------------------------------------------------------------------------
   if (mode === 'cleanup') {
+    if (prov.provider === 'handoff') {
+      out('Nothing to clean up here: the server for this mandate was bought by a human, so Pilot cannot and will not delete it.');
+      out(`  Cancel it at ${prov.vendor} yourself if the run failed.`);
+      return 0;
+    }
     const state = await loadState(local, runId);
     if (!state) throw new UsageError(`no saved state for ${runId} (${runFile(local, runId)}); check the Hetzner console for managed_by=varsiko-pilot servers`);
     const { server_id, ip, dns_record_id } = state.artifacts;
@@ -264,6 +274,8 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
   } else if (v.resume) {
     if (!saved) throw new UsageError(`no saved state for ${runId} (${runFile(local, runId)})`);
     state = saved;
+    // A parked handoff run is "terminal" only so a loop stops polling; resuming is how it continues.
+    if (state.status === 'AWAITING_HUMAN_PURCHASE') state = { ...state, status: 'RUNNING', next_owner: 'Pilot' };
     // An unknown purchase outcome is exactly what --resume is for: the gateway reconciles by
     // Hetzner label. Reopen the run, and release THIS run's open agent-side INTENT (the gateway's
     // own ledger stays authoritative and never re-buys).
@@ -305,6 +317,15 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
       'evidence        Auditor PASS token, checked by the gateway',
     ]);
     if (!(await confirmed('Change DNS?'))) return 2;
+  } else if (prov.provider === 'handoff') {
+    // Nothing to confirm: this lane spends nothing. The human already approved the mandate.
+    banner(v.resume ? 'RESUME (handoff)' : 'HANDOFF RUN (Pilot spends nothing)', [
+      `mandate valid   until ${mandate.exp}${expired && !state.artifacts.server_id ? '  ** EXPIRED: the run will fail **' : ''}`,
+      'the human buys  Pilot parks at AWAITING_HUMAN_PURCHASE until an operator registers the server',
+      `prepare a card  npm run handoff -- card --mandate ${v.mandate}`,
+      `register        npm run handoff -- register --mandate ${v.mandate} --run-id ${runId} --ip <ipv4> --port-8000-restricted`,
+      `after that      ${mandate.run_window_minutes ?? 120} min window; gives up after ${maxPolls} polls without destroying anything`,
+    ]);
   } else {
     banner(v.resume ? 'RESUME (may spend)' : 'LIVE RUN (spends real money)', [
       `mandate valid   until ${mandate.exp}${expired && !state.artifacts.server_id ? '  ** EXPIRED: the gateway will refuse to start spending **' : ''}`,
@@ -350,7 +371,15 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
   }
 
   // ---- report --------------------------------------------------------------------------
-  const bought = state.artifacts.server_id ? 1 : 0;
+  if (state.status === 'AWAITING_HUMAN_PURCHASE') {
+    out('');
+    out(`Parked: waiting for a human to buy the server and an operator to register it (until ${mandate.exp}).`);
+    out(`  Card:      npm run handoff -- card --mandate ${v.mandate}`);
+    out(`  Register:  npm run handoff -- register --mandate ${v.mandate} --run-id ${runId} --ip <ipv4> --port-8000-restricted`);
+    out(`  Continue:  npm run live -- --mandate ${v.mandate} --run-id ${runId} --resume`);
+  }
+  // A handoff run never bought anything, whatever the ledger says about a registered box.
+  const bought = state.artifacts.server_id && prov.provider !== 'handoff' ? 1 : 0;
   if (state.error) out(`  error: ${state.error}`);
   out(
     `${state.status}  step=${state.step}  servers_bought=${bought}  dns_writes=${state.artifacts.dns_record_id ? 1 : 0}  ` +
@@ -370,6 +399,7 @@ export async function liveCommand(argv: string[], io: CliIo, deps: LiveDeps = {}
     out(commands());
     return 0;
   }
+  if (state.status === 'AWAITING_HUMAN_PURCHASE') return 0;
   if (state.status === 'NEEDS_APPROVAL') return 3;
   return state.status === 'DEPLOYED' || state.status === 'CUTOVER' ? 0 : 1;
 }

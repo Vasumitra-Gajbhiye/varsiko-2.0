@@ -53,6 +53,8 @@ const json = (body: unknown, status = 200) =>
 export class FakeInternet {
   readonly opts: Required<FakeInternetOptions>;
   readonly servers = new Map<number, FakeServer>();
+  /** user_data of boxes a HUMAN bought (handoff lane), by IP. Never created through the Hetzner API. */
+  readonly humanBoxes = new Map<string, string>();
   readonly requests: { method: string; host: string; path: string; search: string }[] = [];
   readonly envsReceived: { key: string; value: string }[] = [];
   readonly appBodies: Record<string, unknown>[] = [];
@@ -90,9 +92,14 @@ export class FakeInternet {
     return id;
   }
 
+  /** Simulates a human pasting the rendered cloud-init into a vendor's user-data field and booting the box. */
+  humanBuys(userData: string, ip = SERVER_IP) {
+    this.humanBoxes.set(ip, userData);
+  }
+
   #expectedTokenHash(): string | null {
-    for (const s of this.servers.values()) {
-      const m = /forceFill\(\['token' => '([0-9a-f]{64})'\]\)/.exec(s.user_data);
+    for (const ud of [...[...this.servers.values()].map((s) => s.user_data), ...this.humanBoxes.values()]) {
+      const m = /forceFill\(\['token' => '([0-9a-f]{64})'\]\)/.exec(ud);
       if (m) return m[1]!;
     }
     return null;

@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { devKeys, SCENARIOS } from './pilot/demo.ts';
+import { devKeys, routingTable, SCENARIOS } from './pilot/demo.ts';
 import type { FakeProviders } from './pilot/providers.ts';
 import type { RunState } from './pilot/runbook.ts';
 
@@ -59,6 +59,17 @@ No network calls, no spend: FakeProviders drives the real runbook, guard and led
   if (values.list) {
     for (const s of SCENARIOS) console.log(`  ${s.id.padEnd(16)} ${s.title}`);
     return;
+  }
+
+  // Candidate routing: what Pilot does with each VPS Agent 2 proposes, before any run starts.
+  if (!values.json && !values.scenario) {
+    console.log('');
+    console.log(C.bold('▸ Routing five candidates from Agent 2'));
+    console.log('  ' + C.cyan('Every candidate is untrusted scraped text. Routing is a pure function; nothing is bought here.'));
+    for (const r of routingTable()) {
+      const badge = r.lane === 'automated' ? C.green(r.lane) : r.lane === 'handoff' ? C.yellow(r.lane) : C.red(r.lane);
+      console.log(`  ${r.label.padEnd(28)} ${badge.padEnd(20)} ${C.dim(r.reason)}`);
+    }
   }
 
   const keys = devKeys();

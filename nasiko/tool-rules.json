@@ -23,6 +23,7 @@
       { "pattern": "*anakin_scrape_status", "stance": "allow" },
       { "pattern": "*hetzner_server_create", "stance": "allow" },
       { "pattern": "*hetzner_server_delete", "stance": "allow" },
+      { "pattern": "*handoff_status", "stance": "allow" },
       { "pattern": "*coolify_health", "stance": "allow" },
       { "pattern": "*coolify_project_create", "stance": "allow" },
       { "pattern": "*coolify_application_create", "stance": "allow" },
@@ -47,6 +48,8 @@
     "hetzner_server_delete": "allow: rollback must work unattended, and the gateway itself refuses to delete any server not labelled with the calling mandate's id.",
     "cloudflare_dns_upsert": "ask: the only irreversible step. The platform-native half of the gate; the gateway independently verifies a signed Auditor PASS token bound to this mandate and server IP. Two mechanisms, neither sufficient alone.",
     "anakin_scrape_submit": "allow, but the gateway tool itself rejects any URL except the pinned pricing page. Nasiko rules match tool names only and cannot inspect arguments.",
+    "handoff_status": "allow: read-only. Pilot learns whether an operator has registered the human-bought server and its address; it can never supply one.",
+    "handoff_prepare_and_register": "DELIBERATELY NOT LISTED. The trailing catch-all block stops the Pilot agent from calling them. The operator reaches them with a different bearer (GATEWAY_OPERATOR_TOKEN) straight at the gateway, outside Nasiko, and the gateway itself refuses them to the agent credential (FORBIDDEN_ROLE). Do not add an allow rule for either.",
     "catch_all": "The trailing {pattern:*, stance:block} matters because the platform default is allow."
   }
 }

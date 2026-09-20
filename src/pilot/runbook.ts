@@ -11,6 +11,7 @@ export type Step =
   | 'P1B_PRICE_SUBMIT'
   | 'P1C_PRICE_POLL'
   | 'P2_PROVISION'
+  | 'P2H_AWAIT_PURCHASE'
   | 'P3_BOOT'
   | 'P4_PROJECT'
   | 'P5_ENVS'
@@ -22,6 +23,7 @@ export type Step =
 export type RunStatus =
   | 'RUNNING'
   | 'WAITING'
+  | 'AWAITING_HUMAN_PURCHASE'
   | 'DEPLOYED'
   | 'CUTOVER'
   | 'FAILED'
@@ -33,6 +35,10 @@ export interface RunState {
   mandate_id: string;
   step: Step;
   status: RunStatus;
+  /** Which path this run takes; set at preflight. */
+  lane?: 'automated' | 'handoff';
+  /** Where the operator's task card was written (a path, never its contents). */
+  handoff_card_ref?: string;
   cost_committed_usd: number;
   artifacts: {
     server_id?: string;
@@ -79,6 +85,12 @@ export interface RunContext {
 }
 
 const MAX_POLLS_DEFAULT = 20;
+/**
+ * A handoff box is provisioned by a person, on a vendor whose boot time we have never
+ * measured, and Pilot may resume the moment the operator registers it. Be more patient
+ * than for a box we just created ourselves.
+ */
+const MAX_POLLS_HANDOFF = 60;
 
 export function newRun(runId: string): RunState {
   return {
@@ -117,7 +129,7 @@ function fail(s: RunState, reason: string): RunState {
 export async function advance(state: RunState, ctx: RunContext): Promise<RunState> {
   const s: RunState = { ...state, artifacts: { ...state.artifacts }, log: [...state.log] };
   const now = ctx.now ?? (() => new Date());
-  const maxPolls = ctx.maxPolls ?? MAX_POLLS_DEFAULT;
+  const maxPolls = ctx.maxPolls ?? (s.lane === 'handoff' ? MAX_POLLS_HANDOFF : MAX_POLLS_DEFAULT);
 
   if (s.status === 'DEPLOYED' || s.status === 'CUTOVER' || s.status === 'FAILED' || s.status === 'ROLLED_BACK') {
     return s;
@@ -130,7 +142,9 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
   const verified = verifyMandate(ctx.mandateToken, {
     publicKey: ctx.publicKey,
     now: now(),
-    allowExpired: Boolean(s.artifacts.server_id),
+    // A parked handoff run checks expiry itself, AFTER reading the registration, so a
+    // server registered just before `exp` is not lost to a poll that lands just after.
+    allowExpired: Boolean(s.artifacts.server_id) || s.step === 'P2H_AWAIT_PURCHASE',
   });
   if (!verified.ok) return fail(s, `${verified.code}: ${verified.reason}`);
   const m: Mandate = verified.mandate;
@@ -159,11 +173,57 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
           return fail(s, `REPLAY: nonce ${m.nonce} already spent by ${spent.run_id} at ${spent.ts}`);
         }
         say(s, 'ledger clean, no prior run for this nonce');
+        if (m.provision.provider === 'handoff') {
+          // No price scrape and no purchase: a human buys, so nothing here can be budgeted.
+          s.lane = 'handoff';
+          const c = await claim(ctx.ledger, ledgerRow('P2H'));
+          if (c.ok) await settle(ctx.ledger, ledgerRow('P2H'), 'COMMITTED');
+          say(s, `handoff lane: a human buys ${m.provision.plan} at ${m.provision.vendor}; expected $${m.provision.expected_monthly_usd}/mo (unverified)`);
+          s.step = 'P2H_AWAIT_PURCHASE';
+          return s;
+        }
+        s.lane = 'automated';
         s.step = ctx.providers.pricing ? 'P1B_PRICE_SUBMIT' : 'P2_PROVISION';
+        return s;
+
+      }
+
+      case 'P2H_AWAIT_PURCHASE': {
+        if (m.provision.provider !== 'handoff') return fail(s, 'WRONG_PROVIDER: P2H_AWAIT_PURCHASE needs a handoff mandate');
+        let st;
+        try {
+          st = await ctx.providers.handoff.status();
+        } catch (e) {
+          // A blip while parked must not end the run.
+          if (!isTransient(e)) throw e;
+          say(s, `WARN status check error (${(e as Error).message}); will poll again`);
+          s.status = 'AWAITING_HUMAN_PURCHASE';
+          return s;
+        }
+        if (!st.registered || !st.ip || !st.server_id) {
+          if (now().getTime() > Date.parse(m.exp)) {
+            return fail(s, `EXPIRED: mandate expired at ${m.exp} before a server was registered; nothing was bought`);
+          }
+          if (s.status !== 'AWAITING_HUMAN_PURCHASE') {
+            say(s, `AWAITING_HUMAN_PURCHASE until ${m.exp}: buy the server, then register its IP`);
+          }
+          s.status = 'AWAITING_HUMAN_PURCHASE';
+          s.next_owner = `human: buy ${m.provision.plan} at ${m.provision.vendor}, then register its IP`;
+          return s;
+        }
+        s.artifacts.server_id = st.server_id;
+        s.artifacts.ip = st.ip;
+        s.cost_committed_usd = 0; // Pilot spent nothing; the human pays
+        s.polls = 0;
+        s.status = 'RUNNING';
+        s.next_owner = 'Pilot';
+        say(s, `server registered by the operator: ${st.server_id}`);
+        s.step = 'P3_BOOT';
         return s;
       }
 
       case 'P1B_PRICE_SUBMIT': {
+        if (m.provision.provider !== 'hetzner') return fail(s, 'WRONG_PROVIDER: price scrape applies to hetzner mandates only');
         const d = authorize(m, 'anakin:scrape.submit', { url: PRICE_SOURCE_URL });
         if (!d.allow) return fail(s, `${d.code}: ${d.reason}`);
         try {
@@ -188,6 +248,7 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
         }
         s.polls++;
         if (job.status === 'completed') {
+          if (m.provision.provider !== 'hetzner') return fail(s, 'WRONG_PROVIDER: price scrape applies to hetzner mandates only');
           const pinned = PINNED_PRICES_USD_MONTH[m.provision.server_type];
           if (pinned === undefined) return priceUnavailable(s, m, ctx, `no pinned price for ${m.provision.server_type}`);
           const check = assessPrice(m.provision.server_type, pinned, job.markdown ?? null);
@@ -210,18 +271,21 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
       }
 
       case 'P2_PROVISION': {
+        const prov = m.provision;
+        // A handoff run never buys, whatever a hijacked caller proposes.
+        if (prov.provider !== 'hetzner') return fail(s, 'WRONG_PROVIDER: this mandate authorises a human purchase, not hetzner:server.create');
         const fromMandate: ProvisionArgs = {
-          server_type: m.provision.server_type,
-          image: m.provision.image,
-          location: m.provision.location,
-          count: m.provision.count,
-          cloud_init_sha256: m.provision.cloud_init_sha256,
+          server_type: prov.server_type,
+          image: prov.image,
+          location: prov.location,
+          count: prov.count,
+          cloud_init_sha256: prov.cloud_init_sha256,
         };
         const args = ctx.proposeArgs ? ctx.proposeArgs('P2_PROVISION', fromMandate) : fromMandate;
 
         // The scrape can only raise the price we budget against, never lower it.
         const priceTable = s.pricing
-          ? { ...PINNED_PRICES_USD_MONTH, [m.provision.server_type]: s.pricing.effective_usd }
+          ? { ...PINNED_PRICES_USD_MONTH, [prov.server_type]: s.pricing.effective_usd }
           : undefined;
         const decision = authorize(m, 'hetzner:server.create', { ...args }, { priceTable });
         if (!decision.allow) return fail(s, `${decision.code}: ${decision.reason}`);
@@ -266,7 +330,7 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
           s.step = 'P4_PROJECT';
           return s;
         }
-        if (s.polls >= maxPolls) return await rollback(s, ctx, 'coolify never became healthy');
+        if (s.polls >= maxPolls) return await rollback(s, ctx, 'coolify never became healthy', m);
         s.status = 'WAITING';
         say(s, `booting, poll ${s.polls}/${maxPolls}`);
         return s;
@@ -337,8 +401,8 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
           say(s, 'deployment succeeded — halting. DNS untouched until Auditor passes.');
           return s;
         }
-        if (status === 'failed') return await rollback(s, ctx, 'deployment failed');
-        if (s.polls >= maxPolls) return await rollback(s, ctx, 'deployment timed out');
+        if (status === 'failed') return await rollback(s, ctx, 'deployment failed', m);
+        if (s.polls >= maxPolls) return await rollback(s, ctx, 'deployment timed out', m);
         s.status = 'WAITING';
         say(s, `deploying, poll ${s.polls}/${maxPolls}`);
         return s;
@@ -395,7 +459,7 @@ export async function advance(state: RunState, ctx: RunContext): Promise<RunStat
       say(s, `WARN transient error (${(e as Error).message}); retry ${s.polls}/${MAX_STEP_RETRIES}`);
       return s;
     }
-    return await rollback(s, ctx, (e as Error).message);
+    return await rollback(s, ctx, (e as Error).message, m);
   }
 }
 
@@ -416,6 +480,7 @@ function isTransient(e: unknown): boolean {
 /** Anakin is advisory: outage is a warning unless the operator required the check. */
 function priceUnavailable(s: RunState, m: Mandate, ctx: RunContext, reason: string): RunState {
   s.status = 'RUNNING';
+  if (m.provision.provider !== 'hetzner') return fail(s, 'WRONG_PROVIDER: price scrape applies to hetzner mandates only');
   const pinned = PINNED_PRICES_USD_MONTH[m.provision.server_type];
   if (ctx.requirePriceCheck || pinned === undefined) {
     return fail(s, `PRICE_UNVERIFIED: ${reason}`);
@@ -427,8 +492,33 @@ function priceUnavailable(s: RunState, m: Mandate, ctx: RunContext, reason: stri
   return s;
 }
 
-/** Destroys anything bought under this run, then reports. Never touches DNS. */
-async function rollback(s: RunState, ctx: RunContext, reason: string): Promise<RunState> {
+/**
+ * Destroys anything bought under this run, then reports. Never touches DNS.
+ *
+ * A handoff run destroys NOTHING: Pilot did not buy the server, and deleting a human's
+ * purchase is not ours to do. It reverts DNS if it changed any, stops, and tells the
+ * operator to cancel the server at the vendor.
+ */
+async function rollback(s: RunState, ctx: RunContext, reason: string, m: Mandate): Promise<RunState> {
+  if (m.provision.provider === 'handoff') {
+    say(s, `stopping: ${reason}`);
+    try {
+      if (s.artifacts.dns_record_id) {
+        await ctx.providers.cloudflare.rollback(s.artifacts.dns_record_id);
+        say(s, 'dns reverted');
+      }
+      s.status = 'FAILED';
+      s.error = reason;
+      s.cost_committed_usd = 0;
+      s.next_owner = `operator: cancel the server at ${m.provision.vendor}`;
+    } catch (e) {
+      s.status = 'FAILED';
+      s.error = `${reason}; dns revert also failed: ${(e as Error).message}`;
+      s.next_owner = `operator — MANUAL CLEANUP REQUIRED (dns, and cancel the server at ${m.provision.vendor})`;
+      say(s, s.error);
+    }
+    return s;
+  }
   say(s, `rolling back: ${reason}`);
   try {
     if (s.artifacts.dns_record_id) {
@@ -458,7 +548,7 @@ export async function run(state: RunState, ctx: RunContext, maxSteps = 60): Prom
   for (let i = 0; i < maxSteps; i++) {
     const before = `${s.step}:${s.polls}`;
     s = await advance(s, ctx);
-    const terminal = ['DEPLOYED', 'CUTOVER', 'FAILED', 'ROLLED_BACK', 'NEEDS_APPROVAL'];
+    const terminal = ['DEPLOYED', 'CUTOVER', 'FAILED', 'ROLLED_BACK', 'NEEDS_APPROVAL', 'AWAITING_HUMAN_PURCHASE'];
     if (terminal.includes(s.status)) return s;
     if (`${s.step}:${s.polls}` === before) return s;
   }

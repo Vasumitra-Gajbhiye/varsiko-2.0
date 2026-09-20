@@ -18,10 +18,11 @@ import { Vault } from '../../src/gateway/vault.ts';
 import { signAuditorToken } from '../../src/pilot/auditor.ts';
 import { devMandate } from '../../src/pilot/demo.ts';
 import { MemoryLedger, type Ledger } from '../../src/pilot/ledger.ts';
-import { signMandate, type Mandate } from '../../src/pilot/mandate.ts';
+import { signMandate, type HandoffProvision, type Mandate } from '../../src/pilot/mandate.ts';
 import { NasikoGateway, nasikoProviders } from '../../src/pilot/providers.ts';
 import type { RunContext } from '../../src/pilot/runbook.ts';
 import { FakeInternet, SERVER_IP, type FakeInternetOptions } from './fake-internet.ts';
+import { handoffMandate } from './handoff.ts';
 
 const PREFIX = 'vmg__';
 const read = async (req: IncomingMessage) => {
@@ -115,6 +116,7 @@ export async function makeHarness(o: { net?: FakeInternetOptions } = {}) {
   const cfg: GatewayConfig = {
     port: 0,
     bearerToken: 'g'.repeat(40),
+    operatorToken: 'o'.repeat(40),
     dataDir: dir,
     vaultKey: 'ab'.repeat(32),
     mandatePublicKey: pem(mandateKeys.publicKey),
@@ -139,7 +141,9 @@ export async function makeHarness(o: { net?: FakeInternetOptions } = {}) {
     now: () => clock.t,
   };
 
-  const gatewayServer = createGatewayServer(deps, { bearerToken: cfg.bearerToken, log: () => {} });
+  /** Every audit-log entry the gateway wrote. Must never contain a secret or cloud-init content. */
+  const audit: Record<string, unknown>[] = [];
+  const gatewayServer = createGatewayServer(deps, { bearerToken: cfg.bearerToken, operatorToken: cfg.operatorToken, log: (e) => audit.push(e) });
   const gwPort = await listen(gatewayServer);
   const gatewayUrl = `http://127.0.0.1:${gwPort}/mcp`;
   const nasiko = await startFakeNasiko(gatewayUrl, cfg.bearerToken);
@@ -150,6 +154,7 @@ export async function makeHarness(o: { net?: FakeInternetOptions } = {}) {
     cfg,
     clock,
     nasiko,
+    audit,
     gatewayUrl,
     template,
     keys: { mandate: mandateKeys, auditor: auditorKeys },
@@ -169,6 +174,34 @@ export async function makeHarness(o: { net?: FakeInternetOptions } = {}) {
         { mandate_id: mandate.mandate_id, server_ip: serverIp, verdict: 'PASS', iat: '2026-09-20T15:00:00Z', exp: '2026-09-20T16:00:00Z' },
         auditorKeys.privateKey,
       );
+    },
+
+    /** A handoff mandate (a human buys the server), signed, pinned to this gateway's template. */
+    issueHandoff(over: Partial<Mandate> = {}, prov: Partial<HandoffProvision> = {}) {
+      const mandate = handoffMandate({ ...over }, { cloud_init_sha256: sha256Hex(template), ...prov });
+      return { mandate, token: signMandate(mandate, mandateKeys.privateKey) };
+    },
+
+    /** Calls a gateway tool DIRECTLY with the given credential ('agent' or 'operator'), bypassing Nasiko. */
+    async direct(role: 'agent' | 'operator', tool: string, args: Record<string, unknown>) {
+      const res = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${role === 'agent' ? cfg.bearerToken : cfg.operatorToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } }),
+      });
+      const body = (await res.json()) as { result?: { isError: boolean; content: { text: string }[] }; error?: { message: string } };
+      const text = body.result?.content[0]?.text ?? '';
+      const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      return { isError: body.result?.isError ?? true, error: parsed.error as string | undefined, data: parsed, raw: text };
+    },
+
+    async listTools(role: 'agent' | 'operator'): Promise<string[]> {
+      const res = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${role === 'agent' ? cfg.bearerToken : cfg.operatorToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+      return ((await res.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name).sort();
     },
 
     /** A gateway client as an agent would hold it: fresh token, talking to Nasiko. */

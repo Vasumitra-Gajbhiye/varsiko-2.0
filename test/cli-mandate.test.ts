@@ -8,7 +8,7 @@ import { UsageError } from '../src/cli/io.ts';
 import { mandateCommand, normalizeRepo } from '../src/cli/mandate.ts';
 import { sha256Hex } from '../src/gateway/cloudinit.ts';
 import { authorize } from '../src/pilot/guard.ts';
-import { verifyMandate, type Mandate } from '../src/pilot/mandate.ts';
+import { verifyMandate, type HetznerProvision, type Mandate } from '../src/pilot/mandate.ts';
 import { captureIo } from './helpers/cli.ts';
 
 const NOW = new Date('2026-09-20T15:00:00Z');
@@ -59,7 +59,7 @@ describe('mandate command', () => {
     const template = await readFile('cloud-init/coolify.yaml', 'utf8');
     assert.equal(mandate.provision.cloud_init_sha256, sha256Hex(template), 'hash is computed, never typed');
     assert.equal(mandate.provision.count, 1);
-    assert.equal(mandate.provision.server_type, 'cpx31');
+    assert.equal((mandate.provision as HetznerProvision).server_type, 'cpx31');
     assert.match(mandate.mandate_id, /^mdt_\d+$/);
     assert.match(mandate.nonce, /^[0-9a-f]{32}$/);
     assert.equal(mandate.exp, '2026-09-20T15:10:00.000Z');

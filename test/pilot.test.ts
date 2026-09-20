@@ -3,12 +3,12 @@ import { generateKeyPairSync } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { authorize } from '../src/pilot/guard.ts';
 import { claim, MemoryLedger, nonceSpent, settle } from '../src/pilot/ledger.ts';
-import { canonicalize, signMandate, verifyMandate, type Mandate } from '../src/pilot/mandate.ts';
+import { canonicalize, signMandate, verifyMandate, type HetznerMandate, type Mandate } from '../src/pilot/mandate.ts';
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const NOW = new Date('2026-09-20T15:00:00Z');
 
-function mandate(over: Partial<Mandate> = {}): Mandate {
+function mandate(over: Partial<HetznerMandate> = {}): HetznerMandate {
   return {
     mandate_id: 'mdt_8891',
     nonce: 'b7f3a1',
@@ -62,7 +62,7 @@ describe('verifyMandate', () => {
   it('rejects a tampered payload', () => {
     const token = signMandate(mandate(), privateKey);
     const [p, s] = token.split('.') as [string, string];
-    const evil = JSON.parse(Buffer.from(p, 'base64url').toString()) as Mandate;
+    const evil = JSON.parse(Buffer.from(p, 'base64url').toString()) as HetznerMandate;
     evil.provision.server_type = 'cpx51';
     const forged = `${Buffer.from(canonicalize(evil)).toString('base64url')}.${s}`;
     const r = verifyMandate(forged, { publicKey, now: NOW });

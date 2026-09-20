@@ -14,6 +14,14 @@ export interface Providers {
     createServer(args: ProvisionArgs): Promise<{ server_id: string; ip: string }>;
     deleteServer(serverId: string): Promise<void>;
   };
+  /**
+   * Handoff lane. READ-ONLY: Pilot learns whether a human has registered a server and at
+   * which address. Registering is an operator action with its own credential; nothing on
+   * this surface can supply or change the address.
+   */
+  handoff: {
+    status(): Promise<HandoffStatus>;
+  };
   coolify: {
     health(ip: string): Promise<boolean>;
     createProject(ip: string, name: string): Promise<{ project_uuid: string }>;
@@ -40,6 +48,12 @@ export interface Providers {
     submit(url: string): Promise<{ job_id: string }>;
     poll(jobId: string): Promise<PriceJob>;
   };
+}
+
+export interface HandoffStatus {
+  registered: boolean;
+  ip?: string;
+  server_id?: string;
 }
 
 export type DeployStatus = 'queued' | 'running' | 'success' | 'failed';
@@ -222,6 +236,9 @@ export function nasikoProviders(gw: NasikoGateway, c: RunCredentials): Providers
         await gw.callTool('hetzner_server_delete', { ...base, server_id });
       },
     },
+    handoff: {
+      status: () => gw.callTool<HandoffStatus>('handoff_status', base),
+    },
     coolify: {
       health: async () => (await gw.callTool<{ ready: boolean }>('coolify_health', base)).ready,
       createProject: async (_ip, name) => {
@@ -285,6 +302,10 @@ export interface FakeOptions {
   price?: { markdown?: string; mode?: 'ok' | 'failed' | 'down' | 'stuck'; polls?: number };
   /** Names of Vercel "sensitive" vars the export could not read. */
   skippedEnvs?: string[];
+  /** Handoff lane: `status()` reports registered from this many polls on (default 2). */
+  registerAfterPolls?: number;
+  /** Handoff lane: the human never buys a server. */
+  neverRegister?: boolean;
 }
 
 /** Synthetic stand-in for the vendor pricing page. */
@@ -305,6 +326,10 @@ export class FakeProviders implements Providers {
   #boot = 0;
   #deploy = 0;
   #priceCalls = 0;
+  #registerAfterPolls: number;
+  #neverRegister: boolean;
+  #handoffPolls = 0;
+  #registered: { ip: string; server_id: string } | null = null;
   /** Everything the fake actually did, for assertions and for the demo transcript. */
   readonly calls: { tool: string; args: unknown }[] = [];
   readonly live = new Set<string>();
@@ -315,6 +340,16 @@ export class FakeProviders implements Providers {
     this.#failAt = opts.failAt;
     this.#price = opts.price ?? {};
     this.#skippedEnvs = opts.skippedEnvs ?? [];
+    this.#registerAfterPolls = opts.registerAfterPolls ?? 2;
+    this.#neverRegister = opts.neverRegister ?? false;
+  }
+
+  /**
+   * Test/demo control, NOT part of Providers: models the operator having registered a
+   * server through the gateway. Callers do the address validation the gateway would do.
+   */
+  registerNow(ip = '203.0.113.42') {
+    this.#registered = { ip, server_id: `handoff:${ip}` };
   }
 
   #log(tool: string, args: unknown) {
@@ -332,6 +367,14 @@ export class FakeProviders implements Providers {
     deleteServer: async (id: string) => {
       this.#log('hetzner__server_delete', { id });
       this.live.delete(id);
+    },
+  };
+
+  handoff = {
+    status: async (): Promise<HandoffStatus> => {
+      this.#log('handoff__status', {});
+      if (!this.#registered && !this.#neverRegister && ++this.#handoffPolls >= this.#registerAfterPolls) this.registerNow();
+      return this.#registered ? { registered: true, ...this.#registered } : { registered: false };
     },
   };
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { cidrCovers, preflight } from '../src/cli/preflight.ts';
 import { sha256Hex } from '../src/gateway/cloudinit.ts';
-import type { Mandate } from '../src/pilot/mandate.ts';
+import type { HetznerProvision, Mandate } from '../src/pilot/mandate.ts';
 import { captureIo } from './helpers/cli.ts';
 import type { FakeInternetOptions } from './helpers/fake-internet.ts';
 import { makeHarness } from './helpers/harness.ts';
@@ -64,7 +64,7 @@ async function runPreflight(o: Setup = {}) {
 }
 
 const TEMPLATE_SHA = sha256Hex(await readFile('cloud-init/coolify.yaml', 'utf8'));
-const provision = (over: Partial<Mandate['provision']>): Partial<Mandate> => ({
+const provision = (over: Partial<HetznerProvision>): Partial<Mandate> => ({
   provision: { provider: 'hetzner', server_type: 'cpx31', image: 'ubuntu-24.04', location: 'nbg1', count: 1, cloud_init_sha256: TEMPLATE_SHA, ...over },
 });
 

@@ -12,6 +12,7 @@ import type { HetznerClient } from './clients/hetzner.ts';
 import type { VercelClient } from './clients/vercel.ts';
 import { renderCloudInit, sha256Hex } from './cloudinit.ts';
 import type { GatewayConfig } from './config.ts';
+import { isPublicIPv4 } from './ip.ts';
 import type { Vault } from './vault.ts';
 
 export class ToolError extends Error {
@@ -36,11 +37,18 @@ export interface GatewayDeps {
   now?: () => Date;
 }
 
+/**
+ * Who may call a tool. `agent` is the credential Nasiko's connector holds; `operator` is a
+ * separate credential only the human operator's CLI holds. A tool belongs to exactly one.
+ */
+export type Role = 'agent' | 'operator';
+
 export interface ToolDef {
   name: string;
+  role: Role;
   description: string;
   inputSchema: Record<string, unknown>;
-  handler(args: Args, deps: GatewayDeps): Promise<Record<string, unknown>>;
+  handler(args: Args, deps: GatewayDeps, ctx?: { audit(fields: Record<string, unknown>): void }): Promise<Record<string, unknown>>;
 }
 
 type Args = Record<string, unknown>;
@@ -197,6 +205,40 @@ const need = <T>(v: T | undefined, what: string): T => {
   return v;
 };
 
+/**
+ * Coolify credentials are minted BEFORE the box exists, so a lost response cannot orphan a
+ * server we can no longer log in to. Reused if an earlier attempt already minted them, which
+ * is also what makes `handoff_prepare` idempotent.
+ */
+async function coolifySecrets(deps: GatewayDeps, m: Mandate): Promise<{ api_token: string; root_password: string }> {
+  const name = `coolify:${m.mandate_id}`;
+  const existing = await deps.vault.get<{ api_token: string; root_password: string }>('coolify', name);
+  if (existing) return existing;
+  const fresh = { api_token: randomBytes(32).toString('hex'), root_password: randomBytes(24).toString('hex') };
+  await deps.vault.put('coolify', name, fresh, SECRETS_TTL_MS);
+  return fresh;
+}
+
+/** Renders the pinned template. Only the token's HASH goes in; the root password is needed by the installer. */
+function renderUserData(deps: GatewayDeps, secrets: { api_token: string; root_password: string }): string {
+  try {
+    return renderCloudInit(deps.cloudInitTemplate, {
+      COOLIFY_ROOT_USER: 'varsiko',
+      COOLIFY_ROOT_EMAIL: 'admin@varsiko.invalid',
+      COOLIFY_ROOT_PASSWORD: secrets.root_password,
+      API_TOKEN_SHA256: sha256Hex(secrets.api_token),
+      ALLOWED_IPS: deps.cfg.gatewayEgressIp ?? '',
+    }).userData;
+  } catch (e) {
+    throw new ToolError('BAD_TEMPLATE', (e as Error).message);
+  }
+}
+
+/** Throws unless the mandate's provision.provider matches the tool. */
+function requireProvider(m: Mandate, provider: 'hetzner' | 'handoff', tool: string): void {
+  if (m.provision.provider !== provider) throw new ToolError('WRONG_PROVIDER', `${tool} does not apply to this mandate's provision.provider`);
+}
+
 // ---------------------------------------------------------------- the tools
 
 const MANDATE = { type: 'string', description: 'Signed mandate token, carried by the caller as a capability.' };
@@ -211,6 +253,7 @@ const obj = (props: Record<string, unknown>, required: string[]) => ({
 export const TOOLS: ToolDef[] = [
   {
     name: 'anakin_scrape_submit',
+    role: 'agent',
     description: 'Submit a scrape of the vendor pricing page. Only the pinned pricing URL is accepted.',
     inputSchema: obj({ mandate: MANDATE, url: { type: 'string' } }, ['mandate', 'url']),
     async handler(a, deps) {
@@ -223,6 +266,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'anakin_scrape_status',
+    role: 'agent',
     description: 'Poll a pricing scrape job.',
     inputSchema: obj({ mandate: MANDATE, job_id: { type: 'string' } }, ['mandate', 'job_id']),
     async handler(a, deps) {
@@ -236,6 +280,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'hetzner_server_create',
+    role: 'agent',
     description: 'Buy the one server the mandate approves. Every parameter must equal the mandate; nothing is substituted.',
     inputSchema: obj(
       {
@@ -251,6 +296,7 @@ export const TOOLS: ToolDef[] = [
     ),
     async handler(a, deps) {
       const m = await requireMandate(deps, a, 'spend');
+      requireProvider(m, 'hetzner', 'hetzner_server_create');
       const rid = runId(a);
       const requested = {
         server_type: str(a, 'server_type', 40),
@@ -261,7 +307,7 @@ export const TOOLS: ToolDef[] = [
       };
       const d = authorize(m, 'hetzner:server.create', requested);
       if (!d.allow) throw new ToolError(d.code, d.reason);
-      if (m.provision.count !== 1) throw new ToolError('UNSUPPORTED_COUNT', 'this gateway provisions exactly one server per mandate');
+      if (m.provision.provider !== 'hetzner' || m.provision.count !== 1) throw new ToolError('UNSUPPORTED_COUNT', 'this gateway provisions exactly one server per mandate');
       if (sha256Hex(deps.cloudInitTemplate) !== m.provision.cloud_init_sha256) {
         throw new ToolError('TEMPLATE_MISMATCH', 'the mandate approved a different cloud-init template than this gateway holds');
       }
@@ -273,24 +319,7 @@ export const TOOLS: ToolDef[] = [
       // can never leave an open INTENT that blocks a retry. Credentials are minted before
       // the purchase so a lost response cannot orphan a box we can no longer log in to, and
       // are reused if an earlier attempt already minted them.
-      const secretsName = `coolify:${m.mandate_id}`;
-      let secrets = await deps.vault.get<{ api_token: string; root_password: string }>('coolify', secretsName);
-      if (!secrets) {
-        secrets = { api_token: randomBytes(32).toString('hex'), root_password: randomBytes(24).toString('hex') };
-        await deps.vault.put('coolify', secretsName, secrets, SECRETS_TTL_MS);
-      }
-      let userData: string;
-      try {
-        userData = renderCloudInit(deps.cloudInitTemplate, {
-          COOLIFY_ROOT_USER: 'varsiko',
-          COOLIFY_ROOT_EMAIL: 'admin@varsiko.invalid',
-          COOLIFY_ROOT_PASSWORD: secrets.root_password,
-          API_TOKEN_SHA256: sha256Hex(secrets.api_token),
-          ALLOWED_IPS: deps.cfg.gatewayEgressIp ?? '',
-        }).userData;
-      } catch (e) {
-        throw new ToolError('BAD_TEMPLATE', (e as Error).message);
-      }
+      const userData = renderUserData(deps, await coolifySecrets(deps, m));
       const estimated = d.estimated_monthly_usd;
 
       return once(
@@ -326,10 +355,13 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'hetzner_server_delete',
+    role: 'agent',
     description: 'Destroy a server. Only servers this same mandate created can be deleted.',
     inputSchema: obj({ mandate: MANDATE, server_id: { type: 'string' } }, ['mandate', 'server_id']),
     async handler(a, deps) {
       const m = await requireMandate(deps, a, 'rollback');
+      // A handoff server was bought by a human; Pilot never deletes it.
+      requireProvider(m, 'hetzner', 'hetzner_server_delete');
       const d = authorize(m, 'hetzner:server.delete', {});
       if (!d.allow) throw new ToolError(d.code, d.reason);
       const id = Number(str(a, 'server_id', 20));
@@ -343,7 +375,98 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'handoff_prepare',
+    role: 'operator',
+    description: 'OPERATOR ONLY. Mint the Coolify credentials for a handoff mandate and render the cloud-init the human pastes into the vendor. The result contains a password: it goes to the operator, never to an agent.',
+    inputSchema: obj({ mandate: MANDATE }, ['mandate']),
+    async handler(a, deps, ctx) {
+      const m = await requireMandate(deps, a, 'spend');
+      ctx?.audit({ mandate_id: m.mandate_id });
+      requireProvider(m, 'handoff', 'handoff_prepare');
+      const d = authorize(m, 'handoff:prepare', {});
+      if (!d.allow) throw new ToolError(d.code, d.reason);
+      if (sha256Hex(deps.cloudInitTemplate) !== m.provision.cloud_init_sha256) {
+        throw new ToolError('TEMPLATE_MISMATCH', 'the mandate approved a different cloud-init template than this gateway holds');
+      }
+      const cloud_init = renderUserData(deps, await coolifySecrets(deps, m));
+      return { cloud_init, gateway_egress_ip: deps.cfg.gatewayEgressIp ?? null };
+    },
+  },
+  {
+    name: 'handoff_register',
+    role: 'operator',
+    description: 'OPERATOR ONLY. Record the public IPv4 of the server a human bought for this mandate. The gateway sends its Coolify token and the migrated env vars to this address, so it is validated and can be registered once.',
+    inputSchema: obj(
+      { mandate: MANDATE, run_id: RUN, ip: { type: 'string' }, port_8000_restricted: { type: 'boolean' } },
+      ['mandate', 'run_id', 'ip', 'port_8000_restricted'],
+    ),
+    async handler(a, deps, ctx) {
+      const m = await requireMandate(deps, a, 'spend');
+      const rid = runId(a);
+      const ip = str(a, 'ip', 64);
+      ctx?.audit({ mandate_id: m.mandate_id, ip });
+      requireProvider(m, 'handoff', 'handoff_register');
+      const d = authorize(m, 'handoff:register', {});
+      if (!d.allow) throw new ToolError(d.code, d.reason);
+
+      if (!isPublicIPv4(ip)) {
+        throw new ToolError('BAD_IP', 'ip must be a public IPv4 address (no hostnames, IPv6, ports, private, loopback, link-local or reserved ranges)');
+      }
+      // Coolify's API is plain HTTP on :8000 and carries our bearer token and the env vars.
+      const attested = a.port_8000_restricted === true;
+      if (!attested && !deps.cfg.allowInsecureCoolifyHttp) {
+        throw new ToolError('NO_ATTESTATION', 'attest that tcp/8000 on the server is restricted to this gateway, or set ALLOW_INSECURE_COOLIFY_HTTP=true');
+      }
+      // A box that never had our credentials minted could not work: fail early.
+      if (!(await deps.vault.get('coolify', `coolify:${m.mandate_id}`))) {
+        throw new ToolError('NOT_PREPARED', 'run handoff_prepare first: no Coolify credentials exist for this mandate');
+      }
+
+      const prior = await committed(deps, m, 'P2');
+      const priorIp = (prior?.detail as { ip?: string } | undefined)?.ip;
+      if (prior && prior.run_id === rid && priorIp !== ip) {
+        // once() would hand back the first row; a different address must be an error, not silence.
+        throw new ToolError('ALREADY_REGISTERED', 'a different server was already registered under this mandate; it cannot be changed');
+      }
+      return once(deps, m, 'P2', rid, async () => ({
+        server_id: `handoff:${ip}`,
+        ip,
+        handoff: true,
+        attested_port_8000: attested,
+        registered_by: 'operator',
+      }));
+    },
+  },
+  {
+    name: 'handoff_status',
+    role: 'agent',
+    description: 'Read-only: has an operator registered the server for this handoff mandate, and at which address. The caller learns the address here; it can never supply one.',
+    inputSchema: obj({ mandate: MANDATE }, ['mandate']),
+    async handler(a, deps) {
+      let m: Mandate;
+      try {
+        m = await requireMandate(deps, a, 'continue');
+      } catch (e) {
+        if (e instanceof ToolError && e.code === 'NO_SERVER') {
+          // Nothing registered yet is the normal parked state, not an error.
+          m = await requireMandate(deps, a, 'rollback');
+          requireProvider(m, 'handoff', 'handoff_status');
+          const d = authorize(m, 'handoff:status', {});
+          if (!d.allow) throw new ToolError(d.code, d.reason);
+          return { registered: false };
+        }
+        throw e;
+      }
+      requireProvider(m, 'handoff', 'handoff_status');
+      const d = authorize(m, 'handoff:status', {});
+      if (!d.allow) throw new ToolError(d.code, d.reason);
+      const row = (await committed(deps, m, 'P2'))?.detail as { server_id?: string; ip?: string } | undefined;
+      return { registered: true, ip: row?.ip, server_id: row?.server_id };
+    },
+  },
+  {
     name: 'coolify_health',
+    role: 'agent',
     description: 'True once the new server’s authenticated Coolify API answers, proving bootstrap completed.',
     inputSchema: obj({ mandate: MANDATE }, ['mandate']),
     async handler(a, deps) {
@@ -353,6 +476,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'coolify_project_create',
+    role: 'agent',
     description: 'Create the Coolify project. Name is pinned to the mandate.',
     inputSchema: obj({ mandate: MANDATE, run_id: RUN, name: { type: 'string' } }, ['mandate', 'run_id', 'name']),
     async handler(a, deps) {
@@ -368,6 +492,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'coolify_application_create',
+    role: 'agent',
     description: 'Create the application from the mandate’s repo and branch.',
     inputSchema: obj(
       {
@@ -404,6 +529,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'vercel_env_export',
+    role: 'agent',
     description: 'Read the Vercel project’s production env vars into a sealed blob. Values are never returned; only a reference, a count, and the NAMES of variables that could not be exported.',
     inputSchema: obj({ mandate: MANDATE, project_id: { type: 'string' } }, ['mandate', 'project_id']),
     async handler(a, deps) {
@@ -417,6 +543,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'coolify_envs_bulk_update',
+    role: 'agent',
     description: 'Load a sealed env blob into the application. The caller never sees the values.',
     inputSchema: obj(
       { mandate: MANDATE, app_uuid: { type: 'string' }, sealed_ref: { type: 'string' } },
@@ -436,6 +563,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'coolify_application_deploy',
+    role: 'agent',
     description: 'Trigger the deployment.',
     inputSchema: obj({ mandate: MANDATE, run_id: RUN, app_uuid: { type: 'string' } }, ['mandate', 'run_id', 'app_uuid']),
     async handler(a, deps) {
@@ -450,6 +578,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'coolify_deployment_status',
+    role: 'agent',
     description: 'Poll a deployment.',
     inputSchema: obj({ mandate: MANDATE, deployment_uuid: { type: 'string' } }, ['mandate', 'deployment_uuid']),
     async handler(a, deps) {
@@ -461,6 +590,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'cloudflare_dns_upsert',
+    role: 'agent',
     description: 'Point the mandate’s domain at the server this mandate bought. Requires a valid Auditor PASS token bound to this mandate and server.',
     inputSchema: obj(
       { mandate: MANDATE, run_id: RUN, auditor_token: { type: 'string' }, name: { type: 'string' } },
@@ -490,6 +620,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'cloudflare_dns_rollback',
+    role: 'agent',
     description: 'Restore the DNS record this mandate changed to its previous value.',
     inputSchema: obj({ mandate: MANDATE, record_id: { type: 'string' } }, ['mandate', 'record_id']),
     async handler(a, deps) {

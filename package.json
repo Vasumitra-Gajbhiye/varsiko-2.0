@@ -17,7 +17,8 @@
     "auditor-token": "node --env-file-if-exists=.env src/cli/auditor-token.ts",
     "preflight": "node --env-file-if-exists=.env src/cli/preflight.ts",
     "live": "node --env-file-if-exists=.env src/cli/live.ts",
-    "vault": "node --env-file-if-exists=.env src/cli/vault.ts"
+    "vault": "node --env-file-if-exists=.env src/cli/vault.ts",
+    "handoff": "node --env-file-if-exists=.env src/cli/handoff.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

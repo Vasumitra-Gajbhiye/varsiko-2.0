@@ -1,5 +1,5 @@
 import { ProviderError } from './clients/http.ts';
-import { ToolError, TOOLS, type GatewayDeps } from './tools.ts';
+import { ToolError, TOOLS, type GatewayDeps, type Role } from './tools.ts';
 
 export interface RpcRequest {
   jsonrpc?: string;
@@ -26,7 +26,12 @@ const err = (id: RpcRequest['id'], code: number, message: string): RpcResponse =
  * Tool failures are returned as `isError` results (the MCP convention), so Nasiko and the
  * caller can tell a refused action from a transport failure.
  */
-export async function handleRpc(deps: GatewayDeps, req: RpcRequest, log: AuditLog = () => {}): Promise<RpcResponse | null> {
+export async function handleRpc(
+  deps: GatewayDeps,
+  req: RpcRequest,
+  log: AuditLog = () => {},
+  role: Role = 'agent',
+): Promise<RpcResponse | null> {
   if (req.jsonrpc !== '2.0' || typeof req.method !== 'string') return err(req.id, -32600, 'invalid request');
   if (req.id === undefined) return null; // notification: no response
 
@@ -43,7 +48,8 @@ export async function handleRpc(deps: GatewayDeps, req: RpcRequest, log: AuditLo
 
     case 'tools/list':
       return ok(req.id, {
-        tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        // A role only ever sees the tools it may call.
+        tools: TOOLS.filter((t) => t.role === role).map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       });
 
     case 'tools/call': {
@@ -53,10 +59,20 @@ export async function handleRpc(deps: GatewayDeps, req: RpcRequest, log: AuditLo
       if (!tool) return err(req.id, -32602, `unknown tool: ${String(name)}`);
 
       const started = Date.now();
-      const base = { tool: tool.name, run_id: typeof args.run_id === 'string' ? args.run_id : undefined };
+      // `audit` lets a handler add fields (mandate id, registered address) to its own log line.
+      // Never a token or cloud-init content: handlers only pass identifiers.
+      const extra: Record<string, unknown> = {};
+      const base = { tool: tool.name, role, run_id: typeof args.run_id === 'string' ? args.run_id : undefined };
+      if (tool.role !== role) {
+        log({ ...base, outcome: 'refused', code: 'FORBIDDEN_ROLE', ms: 0 });
+        return ok(req.id, {
+          content: [{ type: 'text', text: JSON.stringify({ error: 'FORBIDDEN_ROLE', message: `${tool.name} is not available to this credential` }) }],
+          isError: true,
+        });
+      }
       try {
-        const result = await tool.handler(args, deps);
-        log({ ...base, outcome: 'ok', ms: Date.now() - started });
+        const result = await tool.handler(args, deps, { audit: (e) => Object.assign(extra, e) });
+        log({ ...base, ...extra, outcome: 'ok', ms: Date.now() - started });
         return ok(req.id, { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false });
       } catch (e) {
         // A provider failure outside the write-ahead path must still say whether it was a
@@ -73,7 +89,7 @@ export async function handleRpc(deps: GatewayDeps, req: RpcRequest, log: AuditLo
         // ProviderError text is already sanitised and length-capped in http.ts. Anything
         // else is not echoed: it could carry arbitrary response text.
         const message = e instanceof ToolError || e instanceof ProviderError ? e.message : 'internal error';
-        log({ ...base, outcome: 'refused', code, ms: Date.now() - started });
+        log({ ...base, ...extra, outcome: 'refused', code, ms: Date.now() - started });
         return ok(req.id, {
           content: [{ type: 'text', text: JSON.stringify({ error: code, message }) }],
           isError: true,

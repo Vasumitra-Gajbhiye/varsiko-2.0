@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { handleRpc, type AuditLog, type RpcRequest } from './mcp.ts';
-import type { GatewayDeps } from './tools.ts';
+import type { GatewayDeps, Role } from './tools.ts';
 
 const MAX_BODY = 1_000_000;
 
@@ -26,7 +26,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 export function createGatewayServer(
   deps: GatewayDeps,
-  opts: { bearerToken: string; log?: AuditLog },
+  opts: { bearerToken: string; operatorToken?: string; log?: AuditLog },
 ): Server {
   const log = opts.log ?? ((e) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...e })));
 
@@ -39,7 +39,11 @@ export function createGatewayServer(
     if (req.method === 'GET' && req.url === '/healthz') return send(200, { ok: true });
     if (req.method !== 'POST' || req.url !== '/mcp') return send(404, { error: 'not found' });
 
-    if (!bearerOk(req.headers.authorization, opts.bearerToken)) {
+    // Both comparisons always run, so which token was wrong does not leak through timing.
+    const isAgent = bearerOk(req.headers.authorization, opts.bearerToken);
+    const isOperator = opts.operatorToken !== undefined && bearerOk(req.headers.authorization, opts.operatorToken);
+    const role: Role | null = isAgent ? 'agent' : isOperator ? 'operator' : null;
+    if (!role) {
       log({ outcome: 'unauthenticated' });
       return send(401, { error: 'unauthorized' });
     }
@@ -51,7 +55,7 @@ export function createGatewayServer(
       return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
     }
 
-    const out = await handleRpc(deps, parsed, log);
+    const out = await handleRpc(deps, parsed, log, role);
     if (out === null) return send(202); // notification accepted
     return send(200, out);
   });

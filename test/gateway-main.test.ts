@@ -17,6 +17,7 @@ const EXPECTED_TOOLS = [
   'hetzner_server_create',
   'hetzner_server_delete',
   'coolify_health',
+  'handoff_status',
   'coolify_project_create',
   'coolify_application_create',
   'coolify_envs_bulk_update',
@@ -107,7 +108,7 @@ describe('gateway main.ts as a real process', () => {
     assert.equal((await rpc('tools/list', { authorization: BEARER })).status, 401, 'scheme is required');
   });
 
-  it('lists exactly the 13 tools with the right Bearer', async () => {
+  it('lists exactly the 14 agent tools with the right Bearer', async () => {
     const res = await rpc('tools/list', { authorization: `Bearer ${BEARER}` });
     assert.equal(res.status, 200);
     const body = (await res.json()) as { result: { tools: { name: string }[] } };

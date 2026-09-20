@@ -4,6 +4,11 @@ export interface GatewayConfig {
   port: number;
   /** What Nasiko's connector sends as `Authorization: Bearer ...` to reach this server. */
   bearerToken: string;
+  /**
+   * A SECOND credential, for the human operator's handoff commands. Nasiko's connector never
+   * holds it, so the agent cannot reach the operator tools. Unset = operator tools disabled.
+   */
+  operatorToken?: string;
   dataDir: string;
   vaultKey: string;
   mandatePublicKey: string;
@@ -57,12 +62,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
 
   if (bearerToken.length < 32) throw new Error('GATEWAY_BEARER_TOKEN must be at least 32 characters');
 
+  const operatorToken = env.GATEWAY_OPERATOR_TOKEN || undefined;
+  if (operatorToken !== undefined) {
+    if (operatorToken.length < 32) throw new Error('GATEWAY_OPERATOR_TOKEN must be at least 32 characters');
+    if (operatorToken === bearerToken) throw new Error('GATEWAY_OPERATOR_TOKEN must differ from GATEWAY_BEARER_TOKEN');
+  }
+
   const fw = env.HETZNER_FIREWALL_ID ? Number(env.HETZNER_FIREWALL_ID) : undefined;
   if (fw !== undefined && !Number.isInteger(fw)) throw new Error('HETZNER_FIREWALL_ID must be an integer');
 
   return {
     port: Number(env.PORT ?? 8787),
     bearerToken,
+    operatorToken,
     dataDir: env.DATA_DIR ?? './data',
     vaultKey,
     mandatePublicKey: readKey(mandateKeyFile, 'MANDATE_PUBLIC_KEY_FILE', true)!,

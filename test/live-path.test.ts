@@ -360,7 +360,7 @@ describe('Nasiko boundary', () => {
       assert.deepEqual(names, [
         'anakin_scrape_status', 'anakin_scrape_submit', 'cloudflare_dns_rollback', 'cloudflare_dns_upsert',
         'coolify_application_create', 'coolify_application_deploy', 'coolify_deployment_status', 'coolify_envs_bulk_update',
-        'coolify_health', 'coolify_project_create', 'hetzner_server_create', 'hetzner_server_delete', 'vercel_env_export',
+        'coolify_health', 'coolify_project_create', 'handoff_status', 'hetzner_server_create', 'hetzner_server_delete', 'vercel_env_export',
       ]);
       assert.ok(!names.some((n) => /exec|shell|ssh|run_command/.test(n)));
     });

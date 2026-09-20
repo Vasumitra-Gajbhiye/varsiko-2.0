@@ -13,7 +13,7 @@ import { TOOLS } from '../gateway/tools.ts';
 import { signAuditorToken, verifyAuditorToken } from '../pilot/auditor.ts';
 import { devMandate } from '../pilot/demo.ts';
 import { PINNED_PRICES_USD_MONTH } from '../pilot/guard.ts';
-import { signMandate, verifyMandate, type Mandate } from '../pilot/mandate.ts';
+import { isHandoff, signMandate, verifyMandate, type Mandate } from '../pilot/mandate.ts';
 import { extractMonthlyPrice, FX_TO_USD, PRICE_SOURCE_URL } from '../pilot/pricing.ts';
 import { DEFAULT_KEY_DIR, KEY_FILES } from './keygen.ts';
 import { runMain, type CliIo } from './io.ts';
@@ -38,7 +38,7 @@ export interface PreflightDeps {
 
 const HETZNER = 'https://api.hetzner.cloud/v1';
 const SECRET_ENV = [
-  'HETZNER_TOKEN', 'GATEWAY_BEARER_TOKEN', 'VAULT_KEY', 'CLOUDFLARE_TOKEN', 'VERCEL_TOKEN', 'ANAKIN_API_KEY', 'GITHUB_TOKEN',
+  'HETZNER_TOKEN', 'GATEWAY_BEARER_TOKEN', 'GATEWAY_OPERATOR_TOKEN', 'VAULT_KEY', 'CLOUDFLARE_TOKEN', 'VERCEL_TOKEN', 'ANAKIN_API_KEY', 'GITHUB_TOKEN',
 ];
 const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -233,8 +233,24 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
     return out;
   };
 
+  // A handoff mandate buys nothing at Hetzner, so none of its checks apply.
+  const handoffMandate = mandate && isHandoff(mandate) ? mandate : undefined;
+  const guardedHz: typeof guarded = (check, fn) => (handoffMandate ? Promise.resolve() : guarded(check, fn));
   let hetznerUsable = false;
-  if (!hzToken) {
+  if (handoffMandate) {
+    add('Hetzner', 'SKIP', 'handoff mandate: a human buys the server, so token, firewall, server type and orphan checks do not apply');
+    add(
+      'Operator token',
+      env.GATEWAY_OPERATOR_TOKEN ? (env.GATEWAY_OPERATOR_TOKEN === env.GATEWAY_BEARER_TOKEN ? 'FAIL' : 'PASS') : 'FAIL',
+      env.GATEWAY_OPERATOR_TOKEN
+        ? env.GATEWAY_OPERATOR_TOKEN === env.GATEWAY_BEARER_TOKEN
+          ? 'GATEWAY_OPERATOR_TOKEN equals GATEWAY_BEARER_TOKEN: Pilot could then register a server itself'
+          : 'set and distinct from the agent bearer'
+        : 'GATEWAY_OPERATOR_TOKEN is not set: handoff card and register would be refused (401)',
+    );
+    const vendorNote = `a human buys ${handoffMandate.provision.plan} at ${handoffMandate.provision.vendor}; the $${handoffMandate.provision.expected_monthly_usd}/mo price is advisory and cannot be checked from here`;
+    add('Handoff', 'WARN', vendorNote);
+  } else if (!hzToken) {
     add('Hetzner token', 'SKIP', 'HETZNER_TOKEN not set');
   } else {
     await guarded('Hetzner token', async () => {
@@ -258,7 +274,7 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
 
   // Firewall + egress IP
   let firewallSources: string[] | undefined;
-  await guarded('Hetzner firewall', async () => {
+  await guardedHz('Hetzner firewall', async () => {
     const id = env.HETZNER_FIREWALL_ID;
     if (!id) {
       return add('Hetzner firewall', 'WARN', 'HETZNER_FIREWALL_ID unset: server creation is refused unless ALLOW_INSECURE_COOLIFY_HTTP=true');
@@ -277,7 +293,7 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
     }
   });
 
-  await guarded('Egress IP', async () => {
+  await guardedHz('Egress IP', async () => {
     const ip = env.GATEWAY_EGRESS_IP;
     if (!ip) return add('Egress IP', 'WARN', "GATEWAY_EGRESS_IP unset: Coolify's allowed_ips will be empty");
     if (!firewallSources) return add('Egress IP', 'SKIP', 'no firewall rule to compare against');
@@ -286,9 +302,10 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
   });
 
   // Server type, location, orphans
-  await guarded('Server type', async () => {
+  await guardedHz('Server type', async () => {
     if (!mandate) return add('Server type', 'SKIP', 'no --mandate given');
     if (!hetznerUsable) return add('Server type', 'SKIP', 'Hetzner token unusable');
+    if (mandate.provision.provider !== 'hetzner') return;
     const { server_type: type, location } = mandate.provision;
     try {
       const st = (await hzAll(`/server_types?name=${encodeURIComponent(type)}`, 'server_types')).find((t) => t.name === type);
@@ -327,11 +344,12 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
     }
   });
 
-  await guarded('Location', async () => {
+  await guardedHz('Location', async () => {
     if (!mandate) return add('Location', 'SKIP', 'no --mandate given');
     if (!hetznerUsable) return add('Location', 'SKIP', 'Hetzner token unusable');
     try {
       const names = (await hzAll('/locations', 'locations')).map((l) => String(l.name));
+      if (mandate.provision.provider !== 'hetzner') return;
       const loc = mandate.provision.location;
       add('Location', names.includes(loc) ? 'PASS' : 'FAIL', names.includes(loc) ? `${loc} exists` : `Hetzner has no location "${loc}" (has ${names.join(', ')})`);
     } catch (e) {
@@ -339,7 +357,7 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
     }
   });
 
-  await guarded('Orphans', async () => {
+  await guardedHz('Orphans', async () => {
     if (!hetznerUsable) return add('Orphans', 'SKIP', 'Hetzner token unusable');
     try {
       const servers = await hzAll(`/servers?label_selector=${encodeURIComponent('managed_by=varsiko-pilot')}`, 'servers');
@@ -416,7 +434,7 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
       if (job.status !== 'completed') return add('Anakin', 'FAIL', `scrape ${job.status === 'failed' ? `failed: ${job.error ?? 'unknown'}` : 'did not finish in time'}`);
       const md = job.markdown ?? '';
       if (v['save-markdown']) await writeFile(v['save-markdown'], md, 'utf8');
-      const type = mandate?.provision.server_type ?? 'cpx31';
+      const type = mandate?.provision.provider === 'hetzner' ? mandate.provision.server_type : 'cpx31';
       const price = extractMonthlyPrice(md, type);
       const saved = v['save-markdown'] ? `; markdown saved to ${v['save-markdown']}` : '';
       if (!price) return add('Anakin', 'WARN', `scrape completed (${md.length} chars) but no monthly price row found for ${type}: fix extraction against the real page${saved}`);
@@ -448,9 +466,10 @@ export async function preflight(argv: string[], io: CliIo, deps: PreflightDeps =
     if (res.status === 401) return add('Gateway', 'FAIL', 'healthy, but it rejects GATEWAY_BEARER_TOKEN (401)');
     const body = asRecord(await res.json().catch(() => ({})));
     const names = asArray(asRecord(body.result).tools).map((t) => String(asRecord(t).name));
-    const missing = TOOLS.map((t) => t.name).filter((n) => !names.includes(n));
-    if (missing.length || names.length !== TOOLS.length) {
-      return add('Gateway', 'FAIL', `expected ${TOOLS.length} tools, got ${names.length}${missing.length ? ` (missing ${missing.join(', ')})` : ''}`);
+    const agentTools = TOOLS.filter((t) => t.role === 'agent');
+    const missing = agentTools.map((t) => t.name).filter((n) => !names.includes(n));
+    if (missing.length || names.length !== agentTools.length) {
+      return add('Gateway', 'FAIL', `expected ${agentTools.length} tools, got ${names.length}${missing.length ? ` (missing ${missing.join(', ')})` : ''}`);
     }
     add('Gateway', 'PASS', `healthy, ${names.length} tools listed`);
   });

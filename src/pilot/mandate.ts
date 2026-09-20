@@ -14,14 +14,7 @@ export interface Mandate {
   approved_by: string;
   scope: string[];
   budget: { max_monthly_usd: number; max_hourly_usd: number };
-  provision: {
-    provider: 'hetzner';
-    server_type: string;
-    image: string;
-    location: string;
-    count: number;
-    cloud_init_sha256: string;
-  };
+  provision: Provision;
   migration: {
     vercel_project_id: string;
     git_repository: string;
@@ -37,6 +30,60 @@ export interface Mandate {
    * mandate and every run rolls back mid-flight.
    */
   run_window_minutes?: number;
+}
+
+/** Pilot buys the server itself (today: Hetzner only). */
+export interface HetznerProvision {
+  provider: 'hetzner';
+  server_type: string;
+  image: string;
+  location: string;
+  count: number;
+  cloud_init_sha256: string;
+}
+
+/**
+ * A human buys the server on the vendor's site; Pilot continues from boot. The price is
+ * ADVISORY: the human pays, so nothing here can be enforced as a spend cap.
+ */
+export interface HandoffProvision {
+  provider: 'handoff';
+  vendor: string;
+  plan: string;
+  region: string;
+  image: string;
+  expected_monthly_usd: number;
+  /** Where Agent 2 saw the price. Shown to the human, never fetched. */
+  source_url: string;
+  count: 1;
+  cloud_init_sha256: string;
+}
+
+export type Provision = HetznerProvision | HandoffProvision;
+export type HandoffMandate = Mandate & { provision: HandoffProvision };
+export type HetznerMandate = Mandate & { provision: HetznerProvision };
+
+export const isHandoff = (m: Mandate): m is HandoffMandate => m.provision.provider === 'handoff';
+
+/** Refuse prices outside this band even if a table or a scrape says otherwise. */
+export const SANITY_MIN_USD = 1;
+export const SANITY_MAX_USD = 500;
+
+/** Images the pinned cloud-init template is written for. */
+export const HANDOFF_IMAGES = ['ubuntu-22.04', 'ubuntu-24.04'] as const;
+export const HANDOFF_SCOPES = ['handoff:prepare', 'handoff:register', 'handoff:status'];
+
+/** Strings that came from a scrape (Agent 2) may only contain these, so they cannot carry markup or newlines. */
+const SAFE_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$/;
+export const isSafeLabel = (v: unknown): v is string => typeof v === 'string' && SAFE_LABEL.test(v);
+
+export function isHttpsUrl(v: unknown): v is string {
+  if (typeof v !== 'string' || v.length > 300 || !/^https:\/\/[^\s`<>"']+$/.test(v)) return false;
+  try {
+    return new URL(v).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export type Refusal = { ok: false; code: string; reason: string };
@@ -121,6 +168,14 @@ export function verifyMandate(
     return { ok: false, code: 'BAD_COUNT', reason: 'provision.count must be a positive integer' };
   }
 
+  const provider = (mandate.provision as { provider?: unknown }).provider;
+  if (provider === 'handoff') {
+    const bad = handoffProblem(mandate.provision as HandoffProvision);
+    if (bad) return { ok: false, code: 'BAD_PROVISION', reason: bad };
+  } else if (provider !== 'hetzner') {
+    return { ok: false, code: 'BAD_PROVIDER', reason: 'provision.provider must be hetzner or handoff' };
+  }
+
   const iat = Date.parse(mandate.iat);
   const exp = Date.parse(mandate.exp);
   if (!Number.isFinite(iat) || !Number.isFinite(exp)) {
@@ -134,4 +189,23 @@ export function verifyMandate(
   }
 
   return { ok: true, mandate };
+}
+
+/** Returns why a handoff provision is malformed, or null. Reasons never echo the offending value. */
+function handoffProblem(p: HandoffProvision): string | null {
+  for (const f of ['vendor', 'plan', 'region'] as const) {
+    if (!isSafeLabel(p[f])) return `provision.${f} must be 1-60 characters of letters, digits, space . _ -`;
+  }
+  if (!(HANDOFF_IMAGES as readonly string[]).includes(p.image)) {
+    return `provision.image must be one of ${HANDOFF_IMAGES.join(', ')}`;
+  }
+  if (typeof p.expected_monthly_usd !== 'number' || !(p.expected_monthly_usd >= SANITY_MIN_USD && p.expected_monthly_usd <= SANITY_MAX_USD)) {
+    return `provision.expected_monthly_usd must be between ${SANITY_MIN_USD} and ${SANITY_MAX_USD}`;
+  }
+  if (!isHttpsUrl(p.source_url)) return 'provision.source_url must be an https URL of at most 300 characters';
+  if (p.count !== 1) return 'a handoff mandate authorises exactly one server';
+  if (typeof p.cloud_init_sha256 !== 'string' || !/^[0-9a-f]{8,64}$/.test(p.cloud_init_sha256)) {
+    return 'provision.cloud_init_sha256 must be lowercase hex';
+  }
+  return null;
 }
