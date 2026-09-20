@@ -4,7 +4,8 @@ Nasiko-native agents for Severance. They run as Docker containers on the Nasiko 
 
 - Agent 01 — The Surveyor: [`agents/severance/surveyor`](agents/severance/surveyor)
 - Agent 02 — The Broker: [`agents/severance/broker`](agents/severance/broker)
-- Later: Porter (rewrite for VPS), then Pilot (purchase) — extra steps on the same workflow
+- Agent 04 — The Pilot / Estimator / Gateway: [`src/`](src/) (operator CLI + MCP gateway)
+- Later: Porter (rewrite for VPS) — extra step on the same workflow
 
 ## Where they run
 

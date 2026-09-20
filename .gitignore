@@ -1,3 +1,13 @@
 .nasiko-deploy/
 .DS_Store
 .pytest_cache/
+node_modules/
+.env
+.env.*
+!.env.example
+# Operator-local keys, mandates, run state, ledgers and handoff cards (never commit)
+# .local/handoff holds rendered cloud-init: it carries the Coolify root password.
+.local/
+# Gateway data dir: ledger and sealed vault
+data/
+*.pem

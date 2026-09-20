@@ -1,0 +1,47 @@
+#cloud-config
+# Varsiko Pilot bootstrap. Pinned by SHA-256 in the signed mandate; do not edit without
+# re-approving a new mandate. Only the whitelisted double-underscore tokens are substituted.
+#
+# UNVERIFIED on a live box. The tinker block follows a community workaround
+# (coollabsio/coolify discussion #11237), not an official Coolify interface. It touches
+# Coolify internals (InstanceSettings id 0, User id 0, Sanctum token hashing) that may
+# change between Coolify releases. Test it on one real box before relying on it.
+write_files:
+  - path: /root/varsiko-bootstrap.sh
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      exec > >(tee -a /var/log/varsiko-bootstrap.log) 2>&1
+
+      export ROOT_USERNAME='__COOLIFY_ROOT_USER__'
+      export ROOT_USER_EMAIL='__COOLIFY_ROOT_EMAIL__'
+      export ROOT_USER_PASSWORD='__COOLIFY_ROOT_PASSWORD__'
+
+      curl -fsSL https://cdn.coollabs.io/coolify/install.sh -o /root/coolify-install.sh
+      bash /root/coolify-install.sh
+
+      # Wait until the app container can run artisan (migrations finished).
+      for i in $(seq 1 120); do
+        if docker exec coolify php artisan tinker --execute='echo "ready";' 2>/dev/null | grep -q ready; then break; fi
+        sleep 5
+      done
+
+      cat > /root/enable-api.php <<'PHP'
+      $s = App\Models\InstanceSettings::find(0);
+      $s->is_api_enabled = true;
+      $s->allowed_ips = '__ALLOWED_IPS__';
+      $s->save();
+      $u = App\Models\User::find(0);
+      session(['currentTeam' => $u->teams()->first()]);
+      $t = $u->createToken('varsiko-pilot', ['read', 'write', 'deploy']);
+      $t->accessToken->forceFill(['token' => '__API_TOKEN_SHA256__'])->save();
+      echo 'varsiko-token-ok';
+      PHP
+
+      docker exec -i coolify php artisan tinker --execute="$(cat /root/enable-api.php)"
+      shred -u /root/enable-api.php || rm -f /root/enable-api.php
+      touch /var/lib/varsiko-bootstrap-done
+
+runcmd:
+  - [bash, /root/varsiko-bootstrap.sh]

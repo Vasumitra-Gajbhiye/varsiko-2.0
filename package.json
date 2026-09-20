@@ -1,0 +1,27 @@
+{
+  "name": "varsiko",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "estimate": "node --env-file-if-exists=.env src/cli.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "pilot": "node src/pilot-cli.ts",
+    "gateway": "node --env-file-if-exists=.env src/gateway/main.ts",
+    "keygen": "node src/cli/keygen.ts",
+    "mandate": "node --env-file-if-exists=.env src/cli/mandate.ts",
+    "auditor-token": "node --env-file-if-exists=.env src/cli/auditor-token.ts",
+    "preflight": "node --env-file-if-exists=.env src/cli/preflight.ts",
+    "live": "node --env-file-if-exists=.env src/cli/live.ts",
+    "vault": "node --env-file-if-exists=.env src/cli/vault.ts",
+    "handoff": "node --env-file-if-exists=.env src/cli/handoff.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
