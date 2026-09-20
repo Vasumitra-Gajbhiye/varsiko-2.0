@@ -1,0 +1,48 @@
+{
+  "protocolVersion": "0.2.9",
+  "name": "porter",
+  "description": "Rewrites Vercel-coupled Next.js apps to run off-platform and emits a reviewable diff, with every change explained and every thing it cannot fix reported.",
+  "url": "http://localhost:8000/",
+  "version": "0.1.0",
+  "agentFramework": "express",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Severance",
+    "url": "https://nasiko.com"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "skills": [
+    {
+      "id": "scan-lock-in",
+      "name": "Scan Vercel lock-in",
+      "description": "Inventories everything in a Next.js repository that only works on Vercel, and says what each one costs off-platform: a broken build, a broken route, or silent drift.",
+      "tags": ["nextjs", "vercel", "audit", "migration"],
+      "examples": [
+        "scan this repo for Vercel lock-in",
+        "what breaks if we leave Vercel?"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "port-off-vercel",
+      "name": "Port a Next.js app off Vercel",
+      "description": "Rewrites @vercel/blob to S3, @vercel/kv to Redis, vercel.json crons to a real scheduler, ISR to a shared Redis cache, and adds a container build — then returns the diff.",
+      "tags": ["nextjs", "vercel", "migration", "codemod", "s3", "redis", "docker"],
+      "examples": [
+        "port this Next.js app off Vercel",
+        "rewrite @vercel/blob and @vercel/kv",
+        "convert Vercel cron and ISR to self-hosted infrastructure"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    }
+  ],
+  "tags": ["nextjs", "vercel", "migration", "porter", "severance"]
+}

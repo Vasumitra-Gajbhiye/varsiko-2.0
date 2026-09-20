@@ -1,10 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+.next/
+*.tsbuildinfo
+
+# Porter run artifacts (generated into a target repo)
+.porter/
+
+# Local archives / snapshots — do not commit, they are tens of MB
+*.rar
+*.zip
+
+# Environment
 .env
 .env.*
 !.env.example
+
 # Operator-local keys, mandates, run state, ledgers and handoff cards (never commit)
 # .local/handoff holds rendered cloud-init: it carries the Coolify root password.
 .local/
+
 # Gateway data dir: ledger and sealed vault
 data/
 *.pem
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,28 @@
+{
+  "name": "victim-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A deliberately Vercel-coupled Next.js storefront. Porter's fixture target.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^1.4.1",
+    "@vercel/blob": "^0.27.0",
+    "@vercel/edge-config": "^1.4.0",
+    "@vercel/functions": "^2.0.0",
+    "@vercel/kv": "^3.0.0",
+    "@vercel/speed-insights": "^1.1.0",
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.2"
+  }
+}
