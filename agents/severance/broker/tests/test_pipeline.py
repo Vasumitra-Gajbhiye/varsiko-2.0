@@ -56,3 +56,12 @@ def test_single_quote_no_mandate(spec, monkeypatch):
     result = run_pipeline(spec, offline=True)
     assert result.mandate is None
     assert result.error["error"] == "INSUFFICIENT_QUOTES"
+
+
+def test_on_progress_emits_providers(spec):
+    seen = []
+    run_pipeline(spec, offline=True, on_progress=lambda p, a: seen.append((p, a)))
+    actions = [a for _, a in seen]
+    assert "discovering" in actions
+    assert "scoring" in actions
+    assert {p for p, _ in seen if p} >= {"hetzner", "digitalocean", "vultr"}

@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Severance — find a VPS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
@@ -22,19 +24,110 @@
       <input id="repo" name="repo" type="url" required placeholder="https://github.com/example/lockin-heavy" />
       <button type="submit" id="go">Find servers</button>
     </form>
-    <div class="steps" id="steps" hidden>
-      <span data-step="surveyor">1. Surveyor</span>
-      <span data-step="porter">2. Porter</span>
-      <span data-step="broker">3. Broker</span>
-      <span data-step="pilot">4. Pilot</span>
-    </div>
     <p class="err" id="error" hidden></p>
-    <div class="grid" id="results" hidden>
-      <section class="card spec" id="spec"></section>
-      <section class="card" id="plans"></section>
-      <section class="card" id="porter" hidden></section>
-      <section class="card" id="pilot" hidden></section>
+
+    <div class="ops" id="ops" hidden>
+      <div class="rail" id="rail">
+        <div class="node" data-agent="surveyor">
+          <span class="led"></span>
+          <strong>Surveyor</strong>
+          <span class="verb" data-verb="surveyor">idle</span>
+        </div>
+        <div class="pipe" data-from="surveyor"><span class="packet"></span></div>
+        <div class="node" data-agent="porter">
+          <span class="led"></span>
+          <strong>Porter</strong>
+          <span class="verb" data-verb="porter">idle</span>
+        </div>
+        <div class="pipe" data-from="porter"><span class="packet"></span></div>
+        <div class="node" data-agent="broker">
+          <span class="led"></span>
+          <strong>Broker</strong>
+          <span class="verb" data-verb="broker">idle</span>
+        </div>
+        <div class="pipe" data-from="broker"><span class="packet"></span></div>
+        <div class="node" data-agent="pilot">
+          <span class="led"></span>
+          <strong>Pilot</strong>
+          <span class="verb" data-verb="pilot">idle</span>
+        </div>
+      </div>
+
+      <div class="consoles">
+        <section class="console" data-agent="surveyor" id="console-surveyor">
+          <header>
+            <span class="led"></span>
+            <h2>01 Surveyor</h2>
+            <span class="verb" data-verb="surveyor">idle</span>
+          </header>
+          <ul class="checklist" id="stages-surveyor">
+            <li data-key="resolving project">resolving project</li>
+            <li data-key="pulling billing">pulling billing</li>
+            <li data-key="querying metrics">querying metrics</li>
+            <li data-key="walking repo">walking repo</li>
+            <li data-key="deriving spec">deriving spec</li>
+          </ul>
+          <div class="fill spec" id="spec"></div>
+        </section>
+
+        <section class="console" data-agent="porter" id="console-porter">
+          <header>
+            <span class="led"></span>
+            <h2>02 Porter</h2>
+            <span class="verb" data-verb="porter">idle</span>
+          </header>
+          <ul class="checklist" id="stages-porter">
+            <li data-key="kv">kv</li>
+            <li data-key="blob">blob</li>
+            <li data-key="image">image</li>
+            <li data-key="isr">isr</li>
+            <li data-key="cron">cron</li>
+            <li data-key="middleware">middleware</li>
+            <li data-key="platform">platform</li>
+            <li data-key="deploy">deploy</li>
+          </ul>
+          <div class="fill" id="porter"></div>
+        </section>
+
+        <section class="console" data-agent="broker" id="console-broker">
+          <header>
+            <span class="led"></span>
+            <h2>03 Broker</h2>
+            <span class="verb" data-verb="broker">idle</span>
+          </header>
+          <ul class="checklist lanes" id="stages-broker">
+            <li data-key="hetzner">hetzner</li>
+            <li data-key="digitalocean">digitalocean</li>
+            <li data-key="vultr">vultr</li>
+          </ul>
+          <div class="fill" id="plans"></div>
+        </section>
+
+        <section class="console" data-agent="pilot" id="console-pilot">
+          <header>
+            <span class="led"></span>
+            <h2>04 Pilot</h2>
+            <span class="verb" data-verb="pilot">idle</span>
+          </header>
+          <ul class="checklist" id="stages-pilot">
+            <li data-key="verify mandate">verify mandate</li>
+            <li data-key="route lane">route lane</li>
+            <li data-key="park">park</li>
+          </ul>
+          <div class="stamp" id="pilot-stamp" hidden>PARKED</div>
+          <div class="fill" id="pilot"></div>
+        </section>
+      </div>
+
+      <section class="logwell">
+        <header>
+          <span>A2A log</span>
+          <span class="logmeta" id="logmeta">awaiting intake</span>
+        </header>
+        <div class="log" id="log" role="log" aria-live="polite"></div>
+      </section>
     </div>
+
     <footer>
       Agents run on local Nasiko. Traces:
       <a href="http://localhost:8080/sessions.html">Sessions</a>

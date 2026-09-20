@@ -135,7 +135,9 @@ sequenceDiagram
 ## 🚀 Quick start
 
 > [!NOTE]
-> Everything below runs **offline by default** (`*_OFFLINE=1`). The demo path is *incapable* of spending money, not merely configured not to.
+> Survey and shopping data run **offline by default** (`*_OFFLINE=1`). The demo path is *incapable* of spending money, not merely configured not to.
+>
+> The Surveyor and Broker narrators still call OpenAI: put `OPENAI_API_KEY` in `agents/severance/broker/.env` (gitignored). `./agents/severance/deploy-nasiko.sh` refuses to upload without it.
 
 ### 1. Try each agent locally, no infrastructure
 

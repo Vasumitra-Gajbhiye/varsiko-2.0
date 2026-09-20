@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Any
 
 from broker.card import render_approval_card
@@ -50,11 +51,15 @@ class PipelineResult:
         return "No mandate."
 
 
+ProgressCb = Callable[[str, str], None]
+
+
 def run_pipeline(
     spec: CapacitySpec | str | dict[str, Any],
     *,
     offline: bool | None = None,
     secret: str | None = None,
+    on_progress: ProgressCb | None = None,
 ) -> PipelineResult:
     if isinstance(spec, str):
         try:
@@ -73,15 +78,23 @@ def run_pipeline(
     usable: list[str] = []
     via: dict[str, str] = {}
 
+    def progress(provider: str, action: str) -> None:
+        if on_progress:
+            on_progress(provider, action)
+
     for provider_id in PROVIDER_ORDER:
+        progress(provider_id, "discovering")
         discovery = discover_pricing_pages(provider_id, offline=offline)
         if discovery.unreachable and not discovery.candidates:
+            progress(provider_id, "unreachable")
             unreachable.append(provider_id)
             continue
         urls = [c.url for c in discovery.candidates]
         if not urls:
+            progress(provider_id, "unreachable")
             unreachable.append(provider_id)
             continue
+        progress(provider_id, "scraping")
         fetched = None
         for candidate in discovery.candidates:
             fetched = fetch_pricing(
@@ -93,8 +106,10 @@ def run_pipeline(
             if fetched.rows:
                 break
         if fetched is None or not fetched.rows:
+            progress(provider_id, "unreachable")
             unreachable.append(provider_id)
             continue
+        progress(provider_id, "quoted")
         via[provider_id] = fetched.discovered_via
         usable.append(provider_id)
         if discovery.suspect:
@@ -102,6 +117,8 @@ def run_pipeline(
                 row.suspect = True
                 row.suspect_quote = row.suspect_quote or discovery.suspect_quote
         rows.extend(fetched.rows)
+
+    progress("", "scoring")
 
     if len(usable) < 2:
         return PipelineResult(
