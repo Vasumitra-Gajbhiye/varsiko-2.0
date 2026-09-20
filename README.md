@@ -135,7 +135,9 @@ sequenceDiagram
 ## 🚀 Quick start
 
 > [!NOTE]
-> Survey and shopping data run **offline by default** (`*_OFFLINE=1`). The demo path is *incapable* of spending money, not merely configured not to.
+> The demo path is *incapable* of spending money, not merely configured not to. Nothing in it holds a provider credential, and the Broker only ever mints a mandate.
+>
+> Survey and Pilot data run **offline** (`*_OFFLINE=1`). Shopping goes live only when `ANAKIN_API_KEY` is set, and that buys read access to vendor pricing pages — nothing else. Without the key it falls back to pinned fixtures, and the UI says which one it used per vendor.
 >
 > The Surveyor and Broker narrators still call OpenAI: put `OPENAI_API_KEY` in `agents/severance/broker/.env` (gitignored). `./agents/severance/deploy-nasiko.sh` refuses to upload without it.
 
@@ -159,10 +161,28 @@ Requires a Nasiko control plane at `http://localhost:8080` with `AGENT_RUNTIME=d
 
 ```sh
 ./agents/severance/deploy-nasiko.sh     # build agents, apply tool rules, upsert severance-pipeline
-python3 ui/serve.py                     # demo UI, stdlib only
+python3 ui/serve.py                     # demo UI, stdlib only; reads ui/.env
 ```
 
-Open **<http://127.0.0.1:8788>**, paste a GitHub URL. The UI calls Nasiko A2A (`/api/orchestrator/a2a`), so traces show up under **Sessions**. It injects a default ceiling of ₹1500; the Surveyor never infers one.
+Open **<http://127.0.0.1:8788>**. Every hop is a real A2A call through `/api/orchestrator/a2a`, so each one shows up under **Sessions**. The flow is three beats:
+
+1. **Paste a GitHub URL and set a monthly ceiling.** Surveyor sizes the workload, Porter dry-runs the rewrite, Broker shops Hetzner, DigitalOcean and Vultr. The ceiling is the human's; the Surveyor still never infers one.
+2. **Choose a server.** Every plan that cleared the hard filters is selectable, and every plan that did not is listed with the Broker's reason. Prices carry an `anakin-search` or `fixture-fallback` badge, so nobody has to guess whether a number was scraped live.
+3. **Authorise.** The UI sends `CHOOSE <provider> <plan_sku>` then `APPROVE <mandate_id>` to the same Broker session. The Broker re-mints for the plan *you* picked, re-checks it against the same ceiling, HMAC-signs it, and its own gate records the approval. The Pilot verifies that signature and parks. No card is charged and no server is bought.
+
+The ceiling is the only lever that widens the field. At the fixture ceiling of ₹1500 exactly one plan survives — that is what the adversarial fixtures are for, not a bug. Raise the budget and more vendors qualify.
+
+| Claim | Where it is enforced |
+|---|---|
+| The human picks the plan | `CHOOSE` selects from the Broker's own scored set; the UI only ever sends a provider and a SKU, never a price |
+| A chosen plan cannot exceed the ceiling | `mint_mandate` re-runs ceiling, floor, capability and region checks before it signs |
+| The approval is not the UI's to give | `evaluate_approval` records it in executor state and stamps `approver: human`; `ui/serve.py` only relays the command |
+| A mandate is single use | The gate refuses a replayed `APPROVE` |
+| Choosing does not spend | `CHOOSE` never calls `emit_to_pilot` |
+
+`deploy-nasiko.sh` turns Anakin on when `ANAKIN_API_KEY` is set in `agents/severance/broker/.env` and falls back to pinned fixtures when it is not, printing which mode it picked. See **[DEMO.md](DEMO.md)** for the run-of-show and failure modes.
+
+> The Broker parks its mandate in container memory keyed by A2A context id, so run **one** Broker replica — two would lose the gate between `CHOOSE` and `APPROVE`.
 
 ### 3. Drive a signed spend run (operator path)
 
@@ -490,6 +510,7 @@ varsiko-2.0/
 │       ├── src/agent/           │   Nasiko A2A server (run.start / poll / cutover / candidates)
 │       ├── tool-rules.json      │   per-agent MCP stances, trailing "*": block
 │       └── cloud-init/          │   pinned Coolify bootstrap template
+├── DEMO.md                      ← run-of-show for the demo, plus failure modes
 ├── ui/                          ← demo UI on :8788, Python stdlib only
 └── docs/assets/                 ← README artwork
 ```
@@ -500,7 +521,9 @@ Per-agent READMEs carry the full config tables and secret-setup commands: [Surve
 
 | Variable | Where | Meaning |
 |---|---|---|
-| `SURVEYOR_OFFLINE` `BROKER_OFFLINE` `PORTER_OFFLINE` `PILOT_OFFLINE` | every agent | `1` uses fixtures, so the path cannot spend. Set in every `Dockerfile` **and** `deploy-nasiko.sh` |
+| `SURVEYOR_OFFLINE` `BROKER_OFFLINE` `PORTER_OFFLINE` `PILOT_OFFLINE` | every agent | `1` uses fixtures, so the path cannot spend. Set in every `Dockerfile` **and** `deploy-nasiko.sh`. `deploy-nasiko.sh` sets `BROKER_OFFLINE=0` only when `ANAKIN_API_KEY` is present |
+| `ANAKIN_API_KEY` | Surveyor, Broker | Live vendor discovery and scraping. Absent ⇒ pinned fixtures, and the UI labels every price accordingly |
+| `CEILING_INR_MONTHLY` | `ui/serve.py` | Ceiling pre-filled in the form. The human changes it per run; no agent defaults one |
 | `MANDATE_SIGNING_SECRET` | Broker + Pilot, **agent-scoped** | HMAC secret for cart mandates. Never vault-wide |
 | `FX_USD_INR` `FX_EUR_INR` `FX_PINNED_AT` | Surveyor, Broker | Pinned, never fetched, so signed artifacts stay verifiable |
 | `GATEWAY_BEARER_TOKEN` `GATEWAY_OPERATOR_TOKEN` | gateway | ≥ 32 chars each, must differ, enforced at config load |

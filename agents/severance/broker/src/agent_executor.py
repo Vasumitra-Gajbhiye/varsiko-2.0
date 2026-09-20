@@ -16,6 +16,7 @@ from a2a.utils.errors import ServerError
 from agent import BrokerAgent
 from broker.approval import PendingGate, evaluate_approval, parse_approve
 from broker.card import render_approval_card, render_shop_card
+from broker.choice import apply_choice, parse_choose
 from broker.contracts import looks_like_spec, inbound_text
 from broker.emit import emit_to_pilot
 from broker.pipeline import run_pipeline
@@ -65,6 +66,11 @@ class BrokerAgentExecutor(AgentExecutor):
         try:
             if parse_approve(query) or (parked and query.strip().lower() in {"yes", "y", "ok", "approve"}):
                 await self._handle_approval(query, parked, updater, task, token)
+                return
+
+            choice = parse_choose(query)
+            if choice is not None:
+                await self._handle_choice(choice, parked, updater, task)
                 return
 
             if looks_like_spec(query):
@@ -180,6 +186,42 @@ class BrokerAgentExecutor(AgentExecutor):
             logger.error("Error: %s", exc)
             raise ServerError(error=InternalError()) from exc
 
+    async def _handle_choice(self, choice, parked, updater, task) -> None:
+        """Human picked a plan. Re-mint for it; the old mandate is abandoned, not extended."""
+        provider, plan_sku = choice
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(
+                f"re-minting for {provider} {plan_sku}...", task.context_id, task.id
+            ),
+        )
+        outcome = apply_choice(parked, provider, plan_sku)
+        if outcome.kind != "chosen" or parked is None:
+            await updater.update_status(
+                TaskState.input_required,
+                new_agent_text_message(outcome.message, task.context_id, task.id),
+                final=True,
+            )
+            return
+
+        self.pending[task.context_id] = parked
+        mandate_text = parked.mandate.model_dump_json(by_alias=True)
+        await updater.add_artifact(
+            [Part(root=TextPart(text=mandate_text)), _json_part(mandate_text)],
+            name="cart_mandate",
+        )
+        await updater.add_artifact(
+            [Part(root=TextPart(text=parked.card))],
+            name="shop_card",
+        )
+        await updater.update_status(
+            TaskState.input_required,
+            new_agent_text_message(
+                outcome.message + "\n\n" + parked.card, task.context_id, task.id
+            ),
+            final=True,
+        )
+
     async def _handle_approval(self, query, parked, updater, task, token) -> None:
         headers = {"x-nasiko-agent-token": token} if token else None
         outcome = evaluate_approval(parked, query)
@@ -201,6 +243,13 @@ class BrokerAgentExecutor(AgentExecutor):
                 return
             outcome.pending.emitted = True
             await updater.add_artifact([Part(root=TextPart(text=text))], name="approval")
+            # Re-emit the mandate now that the gate has stamped it. Whoever carries it to
+            # the Pilot forwards this object; it never writes an approval of its own.
+            approved_text = outcome.pending.mandate.model_dump_json(by_alias=True)
+            await updater.add_artifact(
+                [Part(root=TextPart(text=approved_text)), _json_part(approved_text)],
+                name="cart_mandate",
+            )
             await updater.complete()
             return
         if outcome.kind == "expired_remint" and outcome.pending is not None:

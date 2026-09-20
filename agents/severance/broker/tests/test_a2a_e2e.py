@@ -21,6 +21,12 @@ from broker.fixture_store import fixture_dir
 
 SPEC = (fixture_dir() / "spec_valid.json").read_text()
 
+# The shipped ceiling leaves one survivor by design, so there is nothing to choose
+# between. The human raising their own budget is what opens the field.
+_ROOMY = json.loads(SPEC)
+_ROOMY["constraints"]["ceiling_inr_monthly"] = 4200
+ROOMY_SPEC = json.dumps(_ROOMY)
+
 
 class StubAgent(agent_module.BrokerAgent):
     """No network. Records every prompt that reaches the narrator."""
@@ -232,5 +238,61 @@ def test_failed_emit_leaves_mandate_parked_and_retryable(rpc, monkeypatch):
         assert r2["status"]["state"] == "completed" and len(calls) == 2
         r3 = await rpc(f"APPROVE {mid}", "ctx-8")
         assert len(calls) == 2
+
+    run(go())
+
+
+def _plans(result) -> list[dict]:
+    for art in result.get("artifacts") or []:
+        for part in art.get("parts") or []:
+            text = part.get("text") or ""
+            if "severance.shop_result/v1" in text:
+                return json.loads(text).get("survivors") or []
+    return []
+
+
+def test_choose_then_approve_over_the_same_context(rpc, emitted):
+    """The demo UI path: shop, pick a plan the human chose, then approve it."""
+
+    async def go():
+        shopped = await rpc(ROOMY_SPEC, "ctx-choose-1")
+        plans = _plans(shopped)
+        assert len(plans) >= 2, "need a real choice to exercise CHOOSE"
+        auto_id = _mandate_id(shopped)
+        pick = plans[1]  # deliberately not the one the Broker ranked first
+
+        chosen = await rpc(f"CHOOSE {pick['provider']} {pick['plan_sku']}", "ctx-choose-1")
+        chosen_id = _mandate_id(chosen)
+        assert chosen_id != auto_id, "a choice must re-mint, not reuse the parked mandate"
+        assert pick["plan_sku"] in _text(chosen)
+        assert emitted == [], "choosing must not release anything to the Pilot"
+
+        # The mandate that existed before the choice is dead.
+        stale = await rpc(f"APPROVE {auto_id}", "ctx-choose-1")
+        assert "mismatch" in _text(stale).lower() or auto_id in _text(stale)
+        assert emitted == []
+
+        done = await rpc(f"APPROVE {chosen_id}", "ctx-choose-1")
+        assert done["status"]["state"] == "completed"
+        assert emitted == [(chosen_id, True)]
+
+    run(go())
+
+
+def test_choose_a_plan_that_was_never_offered_is_refused(rpc, emitted):
+    async def go():
+        await rpc(ROOMY_SPEC, "ctx-choose-2")
+        out = await rpc("CHOOSE hetzner CCX63-NOT-OFFERED", "ctx-choose-2")
+        assert "not one of the plans" in _text(out).lower()
+        assert emitted == []
+
+    run(go())
+
+
+def test_choose_without_a_shopping_result_is_refused(rpc, emitted):
+    async def go():
+        out = await rpc("CHOOSE hetzner cpx31", "ctx-choose-3")
+        assert "no shopping result" in _text(out).lower()
+        assert emitted == []
 
     run(go())

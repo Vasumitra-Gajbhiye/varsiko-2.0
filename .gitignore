@@ -3,6 +3,8 @@
 
 # Test caches
 .pytest_cache/
+__pycache__/
+*.pyc
 
 # Dependencies
 node_modules/

@@ -109,7 +109,8 @@ fi
 if [[ ! -f "$BROKER_DIR/.env" ]]; then
   SIGNING="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
   cat > "$BROKER_DIR/.env" <<EOF
-BROKER_OFFLINE=1
+BROKER_OFFLINE=0
+ANAKIN_API_KEY=
 FX_EUR_INR=94.2
 FX_USD_INR=83.0
 FX_PINNED_AT=2026-09-20T12:00:00Z
@@ -118,7 +119,7 @@ MANDATE_SIGNING_SECRET=$SIGNING
 OPENAI_API_KEY=
 MODEL=gpt-4o-mini
 EOF
-  echo "wrote $BROKER_DIR/.env (gitignored) — set OPENAI_API_KEY before deploying"
+  echo "wrote $BROKER_DIR/.env (gitignored) — set OPENAI_API_KEY and ANAKIN_API_KEY before deploying"
 fi
 
 python3 - "$BROKER_DIR/.env" "$WORK/agent-env.json" <<'PY'
@@ -154,6 +155,17 @@ openai_base = (
     or broker.get("OPENAI_BASE_URL")
     or "https://api.openai.com/v1"
 ).strip()
+# Anakin decides live vs fixtures. A missing key falls back rather than pretending:
+# the UI labels every price `anakin-search` or `fixture-fallback` from the agent.
+anakin = (os.environ.get("ANAKIN_API_KEY") or broker.get("ANAKIN_API_KEY") or "").strip()
+offline = "1" if not anakin else (broker.get("BROKER_OFFLINE") or "0")
+if offline not in {"0", "1"}:
+    offline = "0"
+print(
+    "anakin: "
+    + ("live (BROKER_OFFLINE=%s)" % offline if anakin else "NO KEY -- fixtures only"),
+    file=sys.stderr,
+)
 llm = {
     "OPENAI_API_KEY": openai,
     "OPENAI_BASE_URL": openai_base,
@@ -165,13 +177,15 @@ print(json.dumps({
         **llm,
         "SURVEYOR_MODEL": model,
         "SURVEYOR_OFFLINE": "1",
+        "ANAKIN_API_KEY": anakin,
         "FX_USD_INR": broker.get("FX_USD_INR") or "83.0",
         "FX_PINNED_AT": broker.get("FX_PINNED_AT") or "2026-09-20T12:00:00Z",
     },
     "porter": {"PORTER_OFFLINE": "1"},
     "broker": {
         **llm,
-        "BROKER_OFFLINE": "1",
+        "BROKER_OFFLINE": offline,
+        "ANAKIN_API_KEY": anakin,
         "FX_EUR_INR": broker.get("FX_EUR_INR") or "94.2",
         "FX_USD_INR": broker.get("FX_USD_INR") or "83.0",
         "FX_PINNED_AT": broker.get("FX_PINNED_AT") or "2026-09-20T12:00:00Z",
@@ -180,6 +194,7 @@ print(json.dumps({
     },
     "pilot": {
         "PILOT_OFFLINE": "1",
+        "ANAKIN_API_KEY": anakin,
         "MANDATE_SIGNING_SECRET": signing,
         "DATA_DIR": "/tmp/pilot-data",
     },

@@ -3,138 +3,201 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Severance — find a VPS</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <title>Severance</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231d1d1f'/%3E%3Ccircle cx='21' cy='11' r='4' fill='white'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="brand">
-      <h1>Severance</h1>
-      <span>Nasiko</span>
+
+<header class="toolbar">
+  <div class="toolbar-in">
+    <div class="wordmark">
+      <span class="mark"></span>
+      <span>Severance</span>
     </div>
-    <p class="lede">
-      Paste a GitHub repo. Surveyor sizes the server. Porter plans a lock-in rewrite.
-      Broker shops Hetzner, DigitalOcean, and Vultr. Pilot parks on a cart mandate.
-      Nothing is purchased.
-    </p>
-    <form class="card" id="form">
-      <label for="repo">GitHub repository</label>
-      <input id="repo" name="repo" type="url" required placeholder="https://github.com/example/lockin-heavy" />
-      <button type="submit" id="go">Find servers</button>
-    </form>
-    <p class="err" id="error" hidden></p>
-
-    <div class="ops" id="ops" hidden>
-      <div class="rail" id="rail">
-        <div class="node" data-agent="surveyor">
-          <span class="led"></span>
-          <strong>Surveyor</strong>
-          <span class="verb" data-verb="surveyor">idle</span>
-        </div>
-        <div class="pipe" data-from="surveyor"><span class="packet"></span></div>
-        <div class="node" data-agent="porter">
-          <span class="led"></span>
-          <strong>Porter</strong>
-          <span class="verb" data-verb="porter">idle</span>
-        </div>
-        <div class="pipe" data-from="porter"><span class="packet"></span></div>
-        <div class="node" data-agent="broker">
-          <span class="led"></span>
-          <strong>Broker</strong>
-          <span class="verb" data-verb="broker">idle</span>
-        </div>
-        <div class="pipe" data-from="broker"><span class="packet"></span></div>
-        <div class="node" data-agent="pilot">
-          <span class="led"></span>
-          <strong>Pilot</strong>
-          <span class="verb" data-verb="pilot">idle</span>
-        </div>
-      </div>
-
-      <div class="consoles">
-        <section class="console" data-agent="surveyor" id="console-surveyor">
-          <header>
-            <span class="led"></span>
-            <h2>01 Surveyor</h2>
-            <span class="verb" data-verb="surveyor">idle</span>
-          </header>
-          <ul class="checklist" id="stages-surveyor">
-            <li data-key="resolving project">resolving project</li>
-            <li data-key="pulling billing">pulling billing</li>
-            <li data-key="querying metrics">querying metrics</li>
-            <li data-key="walking repo">walking repo</li>
-            <li data-key="deriving spec">deriving spec</li>
-          </ul>
-          <div class="fill spec" id="spec"></div>
-        </section>
-
-        <section class="console" data-agent="porter" id="console-porter">
-          <header>
-            <span class="led"></span>
-            <h2>02 Porter</h2>
-            <span class="verb" data-verb="porter">idle</span>
-          </header>
-          <ul class="checklist" id="stages-porter">
-            <li data-key="kv">kv</li>
-            <li data-key="blob">blob</li>
-            <li data-key="image">image</li>
-            <li data-key="isr">isr</li>
-            <li data-key="cron">cron</li>
-            <li data-key="middleware">middleware</li>
-            <li data-key="platform">platform</li>
-            <li data-key="deploy">deploy</li>
-          </ul>
-          <div class="fill" id="porter"></div>
-        </section>
-
-        <section class="console" data-agent="broker" id="console-broker">
-          <header>
-            <span class="led"></span>
-            <h2>03 Broker</h2>
-            <span class="verb" data-verb="broker">idle</span>
-          </header>
-          <ul class="checklist lanes" id="stages-broker">
-            <li data-key="hetzner">hetzner</li>
-            <li data-key="digitalocean">digitalocean</li>
-            <li data-key="vultr">vultr</li>
-          </ul>
-          <div class="fill" id="plans"></div>
-        </section>
-
-        <section class="console" data-agent="pilot" id="console-pilot">
-          <header>
-            <span class="led"></span>
-            <h2>04 Pilot</h2>
-            <span class="verb" data-verb="pilot">idle</span>
-          </header>
-          <ul class="checklist" id="stages-pilot">
-            <li data-key="verify mandate">verify mandate</li>
-            <li data-key="route lane">route lane</li>
-            <li data-key="park">park</li>
-          </ul>
-          <div class="stamp" id="pilot-stamp" hidden>PARKED</div>
-          <div class="fill" id="pilot"></div>
-        </section>
-      </div>
-
-      <section class="logwell">
-        <header>
-          <span>A2A log</span>
-          <span class="logmeta" id="logmeta">awaiting intake</span>
-        </header>
-        <div class="log" id="log" role="log" aria-live="polite"></div>
-      </section>
+    <div class="toolbar-right">
+      <a class="pill" id="nasiko-pill" href="#" target="_blank" rel="noreferrer">
+        <span class="dot" id="nasiko-dot"></span>
+        <span id="nasiko-label">connecting to Nasiko…</span>
+      </a>
     </div>
-
-    <footer>
-      Agents run on local Nasiko. Traces:
-      <a href="http://localhost:8080/sessions.html">Sessions</a>
-      ·
-      <a href="http://localhost:8080/index.html?view=workflows">severance-pipeline</a>
-    </footer>
   </div>
-  <script src="/app.js"></script>
+</header>
+
+<main class="page">
+
+  <!-- ─────────────────────────  STEP 1 — REPO  ───────────────────────── -->
+  <section class="step" id="step-repo">
+    <div class="card summary" id="repo-summary" hidden>
+      <div class="summary-txt">
+        <span class="summary-label">Surveying</span>
+        <strong id="summary-repo"></strong>
+        <span class="summary-sub" id="summary-budget"></span>
+      </div>
+      <button type="button" class="btn ghost tight" id="summary-edit">Change</button>
+    </div>
+
+    <div class="hero" id="hero">
+      <h1>Leave Vercel. Keep the app.</h1>
+      <p>
+        Four agents run on the Nasiko control plane. They size your app, plan the
+        rewrite, shop three VPS vendors on live pricing pages, and stop at a signed
+        mandate for you to authorise. Nothing is purchased.
+      </p>
+    </div>
+
+    <form class="card form" id="form" autocomplete="off">
+      <div class="field">
+        <label for="repo">GitHub repository</label>
+        <input id="repo" name="repo" type="url" required
+               placeholder="https://github.com/org/app" />
+        <p class="hint">Public repo. The Surveyor reads it to size the server.</p>
+      </div>
+
+      <div class="field">
+        <label for="ceiling">Monthly budget</label>
+        <div class="money">
+          <span class="rupee">₹</span>
+          <input id="ceiling" name="ceiling" type="number" min="200" max="50000"
+                 step="100" value="4200" required />
+          <span class="per">/ month</span>
+        </div>
+        <p class="hint">
+          Your ceiling, and the only number that widens the field. The agents never
+          invent one — a plan over this is refused, not negotiated.
+        </p>
+      </div>
+
+      <button type="submit" class="btn primary" id="go">Survey repository</button>
+      <p class="err" id="error" hidden></p>
+    </form>
+
+    <ol class="rundown" id="rundown">
+      <li><b>Surveyor</b> sizes the workload from the repo.</li>
+      <li><b>Porter</b> dry-runs the rewrite off Vercel primitives.</li>
+      <li><b>Broker</b> shops vendors and signs a cart mandate.</li>
+      <li><b>Pilot</b> verifies the signature and parks.</li>
+    </ol>
+  </section>
+
+  <!-- ─────────────────────────  PIPELINE  ───────────────────────── -->
+  <section class="step" id="step-pipeline" hidden>
+    <div class="rail" id="rail">
+      <div class="node" data-agent="surveyor">
+        <span class="led"></span>
+        <div class="node-txt"><b>Surveyor</b><em data-verb="surveyor">waiting</em></div>
+      </div>
+      <div class="node" data-agent="porter">
+        <span class="led"></span>
+        <div class="node-txt"><b>Porter</b><em data-verb="porter">waiting</em></div>
+      </div>
+      <div class="node" data-agent="broker">
+        <span class="led"></span>
+        <div class="node-txt"><b>Broker</b><em data-verb="broker">waiting</em></div>
+      </div>
+      <div class="node" data-agent="pilot">
+        <span class="led"></span>
+        <div class="node-txt"><b>Pilot</b><em data-verb="pilot">waiting</em></div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="col-main">
+        <div class="card pad" id="spec-card" hidden>
+          <h2>Capacity</h2>
+          <div class="statrow" id="spec-stats"></div>
+          <div class="lockin" id="lockin"></div>
+        </div>
+
+        <div class="card pad" id="porter-card" hidden>
+          <h2>Rewrite plan</h2>
+          <div class="statrow" id="porter-stats"></div>
+          <details id="diff-wrap" hidden>
+            <summary>Show diff</summary>
+            <pre class="diff" id="porter-diff"></pre>
+          </details>
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card log-card">
+          <header class="log-head">
+            <span>Agent activity</span>
+            <span class="log-meta" id="logmeta">idle</span>
+          </header>
+          <div class="log" id="log" role="log" aria-live="polite"></div>
+        </div>
+        <div class="card pad control" id="control-card" hidden>
+          <h3>Nasiko control plane</h3>
+          <div class="control-rows" id="control-rows"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────  STEP 2 — CHOOSE  ───────────────────────── -->
+  <section class="step" id="step-choose" hidden>
+    <div class="sec-head">
+      <h2>Choose a server</h2>
+      <p id="choose-sub"></p>
+    </div>
+
+    <div class="card anakin" id="anakin-strip" hidden>
+      <div class="anakin-head">
+        <span class="anakin-title">Anakin</span>
+        <span class="anakin-mode" id="anakin-mode"></span>
+      </div>
+      <div class="anakin-rows" id="anakin-rows"></div>
+    </div>
+
+    <div class="plans" id="plans"></div>
+
+    <div class="refused" id="refused" hidden>
+      <h3>Refused by the Broker</h3>
+      <div class="refused-rows" id="refused-rows"></div>
+    </div>
+
+    <div class="authorize card" id="authorize" hidden>
+      <div class="auth-left">
+        <span class="auth-label">Authorising</span>
+        <strong id="auth-plan"></strong>
+        <span class="auth-sub" id="auth-sub"></span>
+      </div>
+      <button class="btn primary" id="auth-go">Authorise</button>
+    </div>
+    <p class="fineprint" id="auth-fine" hidden>
+      This signs a cart mandate with an HMAC key held by the Broker and hands it to the
+      Pilot, which verifies it and parks. No card is charged and no server is bought.
+    </p>
+    <p class="err" id="auth-error" hidden></p>
+  </section>
+
+  <!-- ─────────────────────────  STEP 3 — RECEIPT  ───────────────────────── -->
+  <section class="step" id="step-receipt" hidden>
+    <div class="card receipt">
+      <div class="receipt-head">
+        <div>
+          <span class="stamp" id="receipt-stamp">PARKED</span>
+          <h2 id="receipt-title">Mandate authorised</h2>
+          <p id="receipt-sub"></p>
+        </div>
+      </div>
+      <dl class="receipt-grid" id="receipt-grid"></dl>
+      <div class="receipt-foot">
+        <p id="receipt-next"></p>
+        <div class="receipt-links" id="receipt-links"></div>
+      </div>
+    </div>
+    <button class="btn ghost" id="restart">Survey another repository</button>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span>Agents run as containers on Nasiko.</span>
+  <span class="foot-links" id="foot-links"></span>
+</footer>
+
+<script src="/app.js"></script>
 </body>
 </html>
