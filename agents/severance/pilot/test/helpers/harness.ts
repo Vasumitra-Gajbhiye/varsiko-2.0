@@ -51,7 +51,7 @@ export function stanceFor(rules: Rule[], name: string): Rule['stance'] {
  * between an agent and an MCP server.
  */
 async function startFakeNasiko(gatewayUrl: string, gatewayBearer: string) {
-  const rules = (JSON.parse(readFileSync('nasiko/tool-rules.json', 'utf8')) as {
+  const rules = (JSON.parse(readFileSync('tool-rules.json', 'utf8')) as {
     'varsiko-mandate-gateway': { tool_rules: Rule[] };
   })['varsiko-mandate-gateway'].tool_rules;
 

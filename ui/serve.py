@@ -35,6 +35,8 @@ _token_at = 0.0
 SCHEMA_SPEC = "severance.capacity_spec/v1"
 SCHEMA_SHOP = "severance.shop_result/v1"
 SCHEMA_MANDATE = "severance.cart_mandate/v1"
+SCHEMA_PORT = "severance.port_plan/v1"
+SCHEMA_PILOT = "severance.pilot_run/v1"
 
 
 def _http(method: str, path: str, *, token: str | None = None, body: Any = None, accept: str = "application/json", timeout: float = 120) -> tuple[int, str, str]:
@@ -83,12 +85,13 @@ def load_agent_ids(token: str) -> dict[str, str]:
     ids: dict[str, str] = {}
     if IDS_PATH.is_file():
         blob = json.loads(IDS_PATH.read_text())
-        for key in ("surveyor", "broker"):
+        for key in ("surveyor", "porter", "broker", "pilot"):
             row = blob.get(key) or {}
             aid = row.get("agent_id")
             if aid:
                 ids[key] = aid
     if "surveyor" in ids and "broker" in ids:
+        # Porter/Pilot are optional for backward compatibility.
         return ids
     status, _, raw = _http("GET", "/api/agents?limit=50", token=token, timeout=20)
     if status >= 400:
@@ -102,8 +105,12 @@ def load_agent_ids(token: str) -> dict[str, str]:
             continue
         if "surveyor" in name:
             ids.setdefault("surveyor", aid)
+        if "porter" in name:
+            ids.setdefault("porter", aid)
         if "broker" in name:
             ids.setdefault("broker", aid)
+        if "pilot" in name:
+            ids.setdefault("pilot", aid)
     if "surveyor" not in ids or "broker" not in ids:
         raise RuntimeError("severance-surveyor / severance-broker not found on Nasiko")
     return ids
@@ -136,8 +143,22 @@ def harvest(obj: Any, bucket: dict[str, Any]) -> None:
             bucket["shop"] = obj
         elif schema == SCHEMA_MANDATE:
             bucket["mandate"] = obj
+        elif schema == SCHEMA_PORT:
+            bucket["port"] = obj
+        elif schema == SCHEMA_PILOT:
+            bucket["pilot"] = obj
         name = obj.get("name")
-        if name in {"shop_result", "cart_mandate", "surveyor_result.json", "shop_card"}:
+        if name in {
+            "shop_result",
+            "cart_mandate",
+            "surveyor_result.json",
+            "surveyor_result",
+            "shop_card",
+            "port_plan",
+            "porter_diff",
+            "pilot_run",
+            "pilot_park",
+        }:
             bucket.setdefault("named", {})[name] = obj
         for value in obj.values():
             harvest(value, bucket)
@@ -254,6 +275,25 @@ def run_pipeline(repo: str, ceiling: int) -> dict[str, Any]:
     if not spec:
         raise RuntimeError("Surveyor did not return a capacity spec")
     verdict = ((spec.get("decision") or {}).get("verdict") or "").upper()
+
+    port = None
+    port_session = None
+    porter_diff = None
+    if verdict not in {"BLOCKED", "NEEDS_INPUT"} and ids.get("porter"):
+        port_session = create_session(token, ids["porter"])
+        porter = a2a_send(token, ids["porter"], port_session, json.dumps(spec))
+        port = porter.get("port")
+        named = porter.get("named") or {}
+        diff_art = named.get("porter_diff")
+        if isinstance(diff_art, dict):
+            for part in diff_art.get("parts") or []:
+                if isinstance(part, dict) and part.get("text"):
+                    porter_diff = part["text"]
+                    break
+        # Prefer forwarded spec if Porter returned one.
+        if porter.get("spec"):
+            spec = porter["spec"]
+
     shop_session = None
     shop = None
     mandate = None
@@ -267,20 +307,56 @@ def run_pipeline(repo: str, ceiling: int) -> dict[str, Any]:
         )
         shop = broker.get("shop")
         mandate = broker.get("mandate")
+
+    pilot = None
+    pilot_session = None
+    if mandate and ids.get("pilot"):
+        pilot_session = create_session(token, ids["pilot"])
+        # Mark approval so Pilot's lane routing has a complete cart; Pilot still parks.
+        cart = dict(mandate)
+        approval = dict(cart.get("approval") or {})
+        if approval.get("status") != "approved":
+            approval = {
+                "status": "approved",
+                "approver": "demo-ui",
+                "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            cart["approval"] = approval
+        pilot_resp = a2a_send(token, ids["pilot"], pilot_session, json.dumps(cart))
+        pilot = pilot_resp.get("pilot") or (pilot_resp.get("named") or {}).get("pilot_park")
+        if isinstance(pilot, dict) and "parts" in pilot:
+            for part in pilot.get("parts") or []:
+                if isinstance(part, dict) and part.get("data"):
+                    pilot = part["data"]
+                    break
+
     plans = plans_from_shop(shop, mandate)
     return {
         "spec": spec,
         "plans": plans,
         "shop": shop,
         "mandate": mandate,
+        "port": port,
+        "porter_diff": porter_diff,
+        "pilot": pilot,
         "nasiko_session_url": (
             f"{NASIKO_URL}/chat.html?agent_id={ids['surveyor']}&session_id={survey_session}"
         ),
         "nasiko_sessions": {
             "surveyor": f"{NASIKO_URL}/chat.html?agent_id={ids['surveyor']}&session_id={survey_session}",
+            "porter": (
+                f"{NASIKO_URL}/chat.html?agent_id={ids['porter']}&session_id={port_session}"
+                if port_session and ids.get("porter")
+                else None
+            ),
             "broker": (
                 f"{NASIKO_URL}/chat.html?agent_id={ids['broker']}&session_id={shop_session}"
                 if shop_session
+                else None
+            ),
+            "pilot": (
+                f"{NASIKO_URL}/chat.html?agent_id={ids['pilot']}&session_id={pilot_session}"
+                if pilot_session and ids.get("pilot")
                 else None
             ),
             "workflows": f"{NASIKO_URL}/index.html?view=workflows",

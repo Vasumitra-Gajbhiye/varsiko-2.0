@@ -1,10 +1,10 @@
 /**
- * The contract between Surveyor (agent 01) and Porter (agent 03).
+ * Porter's own inventory shape (findings[].kind / blast / confidence).
  *
- * Surveyor walks a live Vercel project and emits a LockInInventory. Porter
- * consumes it and emits a PortPlan, then a diff. Porter can also build the
- * inventory itself (see ./scan.ts) so it stays demoable when Surveyor is down —
- * the schema is the same either way, which is the whole point of having one.
+ * Surveyor (agent 01) emits a different contract — severance.capacity_spec/v1
+ * with lockin_detail[] (feature, severity, evidence.file/line/rule/match,
+ * porter_hint). Those are related but NOT identical. Porter always re-scans
+ * the repo with ./scan.ts; Surveyor's lockin_detail is advisory context only.
  */
 
 /** Every kind of platform coupling Porter knows how to rewrite. */

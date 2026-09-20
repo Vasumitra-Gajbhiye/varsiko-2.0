@@ -58,14 +58,16 @@ npm start                         # A2A server on :8000
 
 ## As a Nasiko agent
 
-Speaks A2A over JSON-RPC; card at `/.well-known/agent-card.json`.
+Identity is `AgentCard.json` `name`: **severance-porter**. Speaks A2A over JSON-RPC; card at `/.well-known/agent-card.json`.
+
+On Nasiko, Porter fetches a GitHub tarball (or uses `fixtures/victim-app` when `PORTER_OFFLINE=1`), re-scans the tree, and dry-runs a port. It forwards the Surveyor `severance.capacity_spec/v1` unchanged plus a `severance.port_plan/v1` artifact. It does not push branches or open PRs.
+
+Surveyor's `lockin_detail` and Porter's `LockInInventory` are related but **not the same schema**. Porter's scan is source of truth for what it rewrites.
 
 ```bash
-curl -X POST localhost:8000/port -H 'content-type: application/json' \
-  -d '{"repoRoot":"/path/to/app","dryRun":true}'
+PORTER_OFFLINE=1 npm start
+# then send a capacity_spec JSON via A2A message/send
 ```
-
-Porter builds its own inventory (`src/inventory/scan.ts`) so it works when Surveyor is down. When Surveyor hands one over, the schema is identical — source truth and runtime truth, same shape.
 
 ## Status
 

@@ -1,7 +1,7 @@
 {
   "protocolVersion": "0.2.9",
-  "name": "porter",
-  "description": "Rewrites Vercel-coupled Next.js apps to run off-platform and emits a reviewable diff, with every change explained and every thing it cannot fix reported.",
+  "name": "severance-porter",
+  "description": "Rewrites Vercel-coupled Next.js apps to run off-platform and emits a reviewable diff, with every change explained and every thing it cannot fix reported. Does not buy servers or push branches.",
   "url": "http://localhost:8000/",
   "version": "0.1.0",
   "agentFramework": "express",
@@ -15,6 +15,8 @@
     "pushNotifications": false,
     "stateTransitionHistory": false
   },
+  "securitySchemes": {},
+  "security": [],
   "defaultInputModes": ["text/plain", "application/json"],
   "defaultOutputModes": ["text/plain", "application/json"],
   "skills": [
@@ -33,7 +35,7 @@
     {
       "id": "port-off-vercel",
       "name": "Port a Next.js app off Vercel",
-      "description": "Rewrites @vercel/blob to S3, @vercel/kv to Redis, vercel.json crons to a real scheduler, ISR to a shared Redis cache, and adds a container build — then returns the diff.",
+      "description": "Rewrites @vercel/blob to S3, @vercel/kv to Redis, vercel.json crons to a real scheduler, ISR to a shared Redis cache, and adds a container build — then returns the diff. Dry-run by default on Nasiko.",
       "tags": ["nextjs", "vercel", "migration", "codemod", "s3", "redis", "docker"],
       "examples": [
         "port this Next.js app off Vercel",

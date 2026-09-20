@@ -1,16 +1,16 @@
 {
-  "name": "varsiko",
+  "name": "severance-pilot",
   "version": "0.1.0",
   "private": true,
+  "description": "Severance Pilot — executes one signed migration mandate via Nasiko; holds no provider credentials.",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "estimate": "node --env-file-if-exists=.env src/cli.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "pilot": "node src/pilot-cli.ts",
+    "pilot": "node src/cli/demo.ts",
     "gateway": "node --env-file-if-exists=.env src/gateway/main.ts",
     "keygen": "node src/cli/keygen.ts",
     "mandate": "node --env-file-if-exists=.env src/cli/mandate.ts",
@@ -18,7 +18,8 @@
     "preflight": "node --env-file-if-exists=.env src/cli/preflight.ts",
     "live": "node --env-file-if-exists=.env src/cli/live.ts",
     "vault": "node --env-file-if-exists=.env src/cli/vault.ts",
-    "handoff": "node --env-file-if-exists=.env src/cli/handoff.ts"
+    "handoff": "node --env-file-if-exists=.env src/cli/handoff.ts",
+    "start": "node src/agent/main.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

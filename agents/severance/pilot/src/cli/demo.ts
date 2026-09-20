@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
-import { devKeys, routingTable, SCENARIOS } from './pilot/demo.ts';
-import type { FakeProviders } from './pilot/providers.ts';
-import type { RunState } from './pilot/runbook.ts';
+import { devKeys, routingTable, SCENARIOS } from '../pilot/demo.ts';
+import type { FakeProviders } from '../pilot/providers.ts';
+import type { RunState } from '../pilot/runbook.ts';
 
 const C = {
   dim: (s: string) => `\x1b[2m${s}\x1b[0m`,

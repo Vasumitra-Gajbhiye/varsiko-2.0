@@ -6,6 +6,8 @@ const errorEl = document.getElementById("error");
 const results = document.getElementById("results");
 const specEl = document.getElementById("spec");
 const plansEl = document.getElementById("plans");
+const porterEl = document.getElementById("porter");
+const pilotEl = document.getElementById("pilot");
 
 function setStep(name) {
   steps.hidden = false;
@@ -71,6 +73,57 @@ function renderPlans(plans, extra) {
   plansEl.innerHTML = `<h2>Suggested VPS</h2>${cards}${session}`;
 }
 
+function renderPorter(port, diff) {
+  if (!port && !diff) {
+    porterEl.hidden = true;
+    porterEl.innerHTML = "";
+    return;
+  }
+  porterEl.hidden = false;
+  const steps = port?.steps ?? port?.plan?.steps?.length ?? "—";
+  const unhandled = port?.unhandled ?? port?.plan?.unhandled?.length ?? "—";
+  const status = port?.status || "planned";
+  const note = port?.note || "Dry-run only. Diff is a reviewable handoff; nothing was pushed.";
+  const diffPreview = diff
+    ? `<pre class="meta" style="max-height:180px;overflow:auto;white-space:pre-wrap">${esc(diff.slice(0, 4000))}${diff.length > 4000 ? "\n…" : ""}</pre>`
+    : `<p class="empty">No diff (noop or skipped).</p>`;
+  porterEl.innerHTML = `
+    <h2>Porter rewrite</h2>
+    <dl>
+      <dt>Status</dt><dd>${esc(status)}</dd>
+      <dt>Steps</dt><dd>${esc(steps)}</dd>
+      <dt>Needs a human</dt><dd>${esc(unhandled)}</dd>
+    </dl>
+    <p class="meta empty" style="margin-top:12px">${esc(note)}</p>
+    ${diffPreview}
+  `;
+}
+
+function renderPilot(pilot) {
+  if (!pilot) {
+    pilotEl.hidden = true;
+    pilotEl.innerHTML = "";
+    return;
+  }
+  pilotEl.hidden = false;
+  const data = pilot.data || pilot;
+  const status = data.status || data.state || "parked";
+  const lane = data.lane || "—";
+  const reason = data.reason || data.next_owner || "";
+  const mandateId = data.mandate_id || "—";
+  pilotEl.innerHTML = `
+    <h2>Pilot</h2>
+    <dl>
+      <dt>Status</dt><dd>${esc(status)}</dd>
+      <dt>Lane</dt><dd>${esc(lane)}</dd>
+      <dt>Mandate</dt><dd>${esc(mandateId)}</dd>
+    </dl>
+    <p class="meta empty" style="margin-top:12px">
+      ${esc(reason || "Parked. No purchase in the demo path.")}
+    </p>
+  `;
+}
+
 form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   showError("");
@@ -85,9 +138,11 @@ form.addEventListener("submit", async (ev) => {
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || res.statusText);
-    setStep("broker");
+    setStep("pilot");
     renderSpec(body.spec || {});
+    renderPorter(body.port, body.porter_diff);
     renderPlans(body.plans || [], body);
+    renderPilot(body.pilot);
     results.hidden = false;
   } catch (err) {
     showError(err.message || String(err));

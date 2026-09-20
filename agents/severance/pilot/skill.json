@@ -1,0 +1,10 @@
+{
+  "name": "execute-mandate",
+  "version": "0.1.0",
+  "type": "skill",
+  "description": "Execute one signed, single-use migration mandate: verify, provision (or await handoff), deploy via Coolify, halt for audit. Pure runbook; no LLM decides spend.",
+  "entry": "src/pilot/runbook.ts",
+  "exports": ["advance", "run", "newRun"],
+  "tags": ["migration", "mandate", "hetzner", "coolify"],
+  "runtime": "node"
+}

@@ -37,7 +37,7 @@ nasiko restart severance-broker
 
 The deployed container does **not** inherit your local `.env`.
 
-**Pilot secret distribution:** the same `MANDATE_SIGNING_SECRET` must be set **agent-scoped** on the Pilot (`--agent severance-pilot`), not vault-wide. `verify.py` is what the Pilot imports: HMAC check **and** an independent `monthly_inr <= ceiling_inr_monthly`. If the Broker is fully compromised, the Pilot still refuses an over-cap mandate.
+**Pilot secret distribution:** the same `MANDATE_SIGNING_SECRET` must be set **agent-scoped** on the Pilot (`--agent severance-pilot`), not vault-wide. Pilot verifies HMAC **and** an independent `monthly_inr <= ceiling_inr_monthly`. If the Broker is fully compromised, the Pilot still refuses an over-cap cart mandate.
 
 ## Local loop
 

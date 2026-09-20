@@ -1,10 +1,11 @@
 import { createPrivateKey, createPublicKey, sign, verify, type KeyObject } from 'node:crypto';
 
 /**
- * A mandate is a single-use, expiring, cost-capped, scope-limited capability.
- * Broker (Agent 2) signs it after human approval. Pilot (Agent 4) carries it but
- * cannot read or alter it meaningfully: every field below is enforced downstream
- * by the guard, not by the agent's prompt.
+ * A spend mandate is a single-use, expiring, cost-capped, scope-limited capability.
+ * It is Ed25519-signed by an operator (`npm run mandate`), not by Broker.
+ * Broker (Agent 2) mints a separate HMAC `severance.cart_mandate/v1` after human
+ * approval; Pilot verifies that cart, then parks until a spend mandate arrives.
+ * Every field below is enforced by the guard, not by the agent's prompt.
  */
 export interface Mandate {
   mandate_id: string;

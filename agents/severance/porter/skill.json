@@ -1,0 +1,10 @@
+{
+  "name": "port-off-vercel",
+  "version": "0.1.0",
+  "type": "skill",
+  "description": "Rewrite Vercel lock-in in a Next.js tree into reviewable off-platform diffs. Pure transforms; dry-run by default.",
+  "entry": "src/runtime/port.ts",
+  "exports": ["portRepo", "planPort", "scanRepo"],
+  "tags": ["nextjs", "vercel", "codemod", "migration"],
+  "runtime": "node"
+}

@@ -20,13 +20,11 @@
     "demo": "tsx src/cli.ts port fixtures/victim-app --dry-run --pretty"
   },
   "dependencies": {
-    "@octokit/rest": "^21.0.2",
     "commander": "^13.0.0",
     "diff": "^7.0.0",
     "express": "^4.21.2",
     "fast-glob": "^3.3.3",
     "picocolors": "^1.1.1",
-    "simple-git": "^3.27.0",
     "ts-morph": "^24.0.0",
     "zod": "^3.24.1"
   },

@@ -2,9 +2,10 @@ import { PINNED_PRICES_USD_MONTH } from './guard.ts';
 import { HANDOFF_IMAGES, isHttpsUrl, isSafeLabel, SANITY_MAX_USD, SANITY_MIN_USD } from './mandate.ts';
 
 /**
- * The Agent 2 (Broker) -> Agent 4 (Pilot) contract. Agent 2 is not in this repo and its
- * output is scraped text, so every field here is UNTRUSTED: `routeCandidate` validates it
- * before any of it can reach a card, a mandate or a log.
+ * The Agent 2 (Broker) → Agent 4 (Pilot) routing contract.
+ * Broker lives at agents/severance/broker and emits scraped plan rows; every field
+ * here is UNTRUSTED. `routeCandidate` validates before anything reaches a card,
+ * a mandate, or a log.
  */
 export interface VpsCandidate {
   vendor: string;
