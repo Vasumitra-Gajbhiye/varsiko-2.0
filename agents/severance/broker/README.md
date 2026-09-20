@@ -22,8 +22,8 @@ Copy `.env.example` to `.env`. The ceiling is **not** configured here — it arr
 | `MANDATE_SIGNING_SECRET` | 32-byte hex. HMAC-SHA256 for cart mandates. |
 | `FX_EUR_INR` / `FX_USD_INR` / `FX_PINNED_AT` | Pinned FX. Never fetch a live rate. |
 | `BROKER_OFFLINE=1` | Skip live Anakin; use `src/broker/fixtures`. |
-| `OPENAI_BASE_URL` + `OPENAI_API_KEY` | Nasiko LLM router (preferred). |
-| `ANTHROPIC_API_KEY` | Fallback narrator. |
+| `OPENAI_API_KEY` | Required. Official OpenAI key (`sk-…`). Narrator uses `gpt-4o-mini` unless `MODEL` is set. |
+| `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`. |
 | `PILOT_A2A_URL` / `PILOT_AGENT_ID` | Outbound handoff. Unset → stub. |
 | `MCP_GATEWAY_URL` | Optional messaging tools. Forward `x-nasiko-agent-token`; never cache or log it. |
 

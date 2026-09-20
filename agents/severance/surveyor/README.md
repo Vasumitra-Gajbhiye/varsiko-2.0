@@ -22,7 +22,8 @@ Copy `.env.example` to `.env`. The ceiling is **not** configured here — it arr
 | `GITHUB_TOKEN` | Private repos only. Public tarballs work without it. |
 | `FX_USD_INR` / `FX_PINNED_AT` | Pinned FX. Same as the Broker. |
 | `SURVEYOR_OFFLINE=1` | Skip live APIs; use fixtures. |
-| `OPENAI_BASE_URL` + `OPENAI_API_KEY` | Nasiko LLM router (preferred). |
+| `OPENAI_API_KEY` | Required. Official OpenAI key (`sk-…`). Narrator uses `gpt-4o-mini` unless `MODEL` is set. |
+| `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`. |
 
 ### Secrets on the cluster
 

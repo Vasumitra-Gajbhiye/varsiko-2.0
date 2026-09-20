@@ -178,27 +178,38 @@ def _anthropic_tools() -> list[dict[str, Any]]:
     ]
 
 
+DEFAULT_MODEL = "gpt-4o-mini"
+OPENAI_API_BASE = "https://api.openai.com/v1"
+
+
 class SurveyorAgent:
     SUPPORTED_CONTENT_TYPES = ["text", "text/plain"]
 
     def __init__(self) -> None:
-        self.model = os.getenv("SURVEYOR_MODEL") or os.getenv("MODEL", "deepseek-v4-flash")
+        self.model = os.getenv("SURVEYOR_MODEL") or os.getenv("MODEL", DEFAULT_MODEL)
         self._openai = None
         self._anthropic = None
-        if os.getenv("OPENAI_BASE_URL"):
+        openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if openai_key:
             from openai import AsyncOpenAI
 
-            self._openai = AsyncOpenAI(
-                base_url=os.getenv("OPENAI_BASE_URL"),
-                api_key=os.getenv("OPENAI_API_KEY", "unused"),
-            )
-        else:
+            base_url = (os.getenv("OPENAI_BASE_URL") or "").strip() or OPENAI_API_BASE
+            self._openai = AsyncOpenAI(base_url=base_url, api_key=openai_key)
+            logger.info("LLM narrator: OpenAI model=%s", self.model)
+            return
+        anthropic_key = (
+            os.getenv("ANTHROPIC_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
+        ).strip()
+        if anthropic_key:
             import anthropic
 
             self._anthropic = anthropic.AsyncAnthropic(
                 base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic"),
-                api_key=os.getenv("ANTHROPIC_API_KEY", os.getenv("DEEPSEEK_API_KEY")),
+                api_key=anthropic_key,
             )
+            logger.info("LLM narrator: Anthropic-compatible model=%s", self.model)
+            return
+        logger.warning("No LLM configured. Set OPENAI_API_KEY.")
 
     async def stream(
         self,
@@ -222,7 +233,7 @@ class SurveyorAgent:
             elif self._anthropic is not None:
                 text = await self._anthropic_loop(query, system, nasiko_token)
             else:
-                text = "No LLM configured. Set OPENAI_BASE_URL or ANTHROPIC_API_KEY."
+                text = "No LLM configured. Set OPENAI_API_KEY."
         except Exception as exc:
             logger.exception("LLM loop failed")
             text = f"The narrator failed ({exc}). The code pipeline is unaffected."
@@ -231,6 +242,30 @@ class SurveyorAgent:
             "require_user_input": False,
             "content": text,
         }
+
+    async def narrate(self, query: str, facts: str) -> str:
+        """Summarize pipeline facts. Never invent numbers; facts already decided in code."""
+        client = getattr(self, "_openai", None)
+        if client is None or not facts.strip():
+            return facts
+        resp = await client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        SYSTEM_PROMPT
+                        + "\n\nNarrate the following code-pipeline facts for a human. "
+                        "Do not invent numbers, lock-in, or a ceiling."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"{query}\n\nFacts:\n{facts}",
+                },
+            ],
+        )
+        return (resp.choices[0].message.content or "").strip() or facts
 
     async def _openai_loop(self, query: str, system: str, token: str | None) -> str:
         messages: list[dict[str, Any]] = [

@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NASIKO_URL="${NASIKO_URL:-http://localhost:8080}"
 NASIKO_USER="${NASIKO_USER:-admin}"
 NASIKO_PASSWORD="${NASIKO_PASSWORD:-changeme}"
-VERSION="${VERSION:-0.1.5}"
+# Unique per run so Nasiko does not reject "version already exists".
+VERSION="${VERSION:-0.1.$(date +%Y%m%d%H%M%S)}"
 
 SURVEYOR_DIR="$ROOT/agents/severance/surveyor"
 BROKER_DIR="$ROOT/agents/severance/broker"
@@ -60,15 +61,20 @@ zip_pilot() {
 }
 
 upload() {
-  local name="$1" zipfile="$2" envjson="$3"
-  curl -sS -X POST "$NASIKO_URL/api/agents/upload" \
-    -H "Authorization: Bearer $TOKEN" \
-    -F "name=$name" \
-    -F "version_tag=$VERSION" \
-    -F "ports=8000" \
-    -F "inbound_format=openai" \
-    -F "env=$envjson" \
+  local name="$1" zipfile="$2" envjson="$3" format="${4:-}"
+  local -a args=(
+    -sS -X POST "$NASIKO_URL/api/agents/upload"
+    -H "Authorization: Bearer $TOKEN"
+    -F "name=$name"
+    -F "version_tag=$VERSION"
+    -F "ports=8000"
+    -F "env=$envjson"
     -F "file=@$zipfile;type=application/zip"
+  )
+  if [[ -n "$format" ]]; then
+    args+=(-F "inbound_format=$format")
+  fi
+  curl "${args[@]}"
 }
 
 poll_build() {
@@ -109,47 +115,97 @@ FX_USD_INR=83.0
 FX_PINNED_AT=2026-09-20T12:00:00Z
 MANDATE_TTL_SECONDS=900
 MANDATE_SIGNING_SECRET=$SIGNING
+OPENAI_API_KEY=
+MODEL=gpt-4o-mini
 EOF
-  echo "wrote $BROKER_DIR/.env (gitignored)"
+  echo "wrote $BROKER_DIR/.env (gitignored) — set OPENAI_API_KEY before deploying"
 fi
 
-SIGNING="$(python3 -c '
+python3 - "$BROKER_DIR/.env" "$WORK/agent-env.json" <<'PY'
+import json, os, sys
 from pathlib import Path
-for line in Path("'"$BROKER_DIR"'/.env").read_text().splitlines():
-    if line.startswith("MANDATE_SIGNING_SECRET="):
-        print(line.split("=",1)[1]); break
-')"
 
-SURVEYOR_ENV='{"SURVEYOR_OFFLINE":"1","FX_USD_INR":"83.0","FX_PINNED_AT":"2026-09-20T12:00:00Z"}'
-PORTER_ENV='{"PORTER_OFFLINE":"1"}'
-BROKER_ENV="$(python3 -c 'import json; print(json.dumps({
-  "BROKER_OFFLINE":"1",
-  "FX_EUR_INR":"94.2",
-  "FX_USD_INR":"83.0",
-  "FX_PINNED_AT":"2026-09-20T12:00:00Z",
-  "MANDATE_TTL_SECONDS":"900",
-  "MANDATE_SIGNING_SECRET":"'"$SIGNING"'"
-}))')"
-PILOT_ENV="$(python3 -c 'import json; print(json.dumps({
-  "PILOT_OFFLINE":"1",
-  "MANDATE_SIGNING_SECRET":"'"$SIGNING"'",
-  "DATA_DIR":"/tmp/pilot-data"
-}))')"
+def load_dotenv(path):
+    env = {}
+    p = Path(path)
+    if not p.is_file():
+        return env
+    for line in p.read_text().splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        env[k.strip()] = v.strip().strip("'").strip('"')
+    return env
 
-echo "zipping agents"
+broker = load_dotenv(sys.argv[1])
+openai = (os.environ.get("OPENAI_API_KEY") or broker.get("OPENAI_API_KEY") or "").strip()
+if not openai:
+    raise SystemExit(
+        "OPENAI_API_KEY is required. Put it in agents/severance/broker/.env "
+        "or export OPENAI_API_KEY, then re-run deploy."
+    )
+model = (os.environ.get("MODEL") or broker.get("MODEL") or "gpt-4o-mini").strip() or "gpt-4o-mini"
+signing = broker.get("MANDATE_SIGNING_SECRET") or ""
+if not signing:
+    raise SystemExit("MANDATE_SIGNING_SECRET missing from agents/severance/broker/.env")
+openai_base = (
+    os.environ.get("OPENAI_BASE_URL")
+    or broker.get("OPENAI_BASE_URL")
+    or "https://api.openai.com/v1"
+).strip()
+llm = {
+    "OPENAI_API_KEY": openai,
+    "OPENAI_BASE_URL": openai_base,
+    "MODEL": model,
+}
+print(json.dumps({
+    "signing": signing,
+    "surveyor": {
+        **llm,
+        "SURVEYOR_MODEL": model,
+        "SURVEYOR_OFFLINE": "1",
+        "FX_USD_INR": broker.get("FX_USD_INR") or "83.0",
+        "FX_PINNED_AT": broker.get("FX_PINNED_AT") or "2026-09-20T12:00:00Z",
+    },
+    "porter": {"PORTER_OFFLINE": "1"},
+    "broker": {
+        **llm,
+        "BROKER_OFFLINE": "1",
+        "FX_EUR_INR": broker.get("FX_EUR_INR") or "94.2",
+        "FX_USD_INR": broker.get("FX_USD_INR") or "83.0",
+        "FX_PINNED_AT": broker.get("FX_PINNED_AT") or "2026-09-20T12:00:00Z",
+        "MANDATE_TTL_SECONDS": broker.get("MANDATE_TTL_SECONDS") or "900",
+        "MANDATE_SIGNING_SECRET": signing,
+    },
+    "pilot": {
+        "PILOT_OFFLINE": "1",
+        "MANDATE_SIGNING_SECRET": signing,
+        "DATA_DIR": "/tmp/pilot-data",
+    },
+}), file=open(sys.argv[2], "w"))
+PY
+
+SURVEYOR_ENV="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["surveyor"]))' "$WORK/agent-env.json")"
+PORTER_ENV="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["porter"]))' "$WORK/agent-env.json")"
+BROKER_ENV="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["broker"]))' "$WORK/agent-env.json")"
+PILOT_ENV="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["pilot"]))' "$WORK/agent-env.json")"
+echo "LLM: OpenAI key will be injected into surveyor + broker (value not printed)"
+
+echo "zipping agents (version $VERSION)"
 zip_python_agent "$SURVEYOR_DIR" "$WORK/severance-surveyor.zip"
 zip_porter "$WORK/severance-porter.zip"
 zip_python_agent "$BROKER_DIR" "$WORK/severance-broker.zip"
 zip_pilot "$WORK/severance-pilot.zip"
 
 echo "uploading severance-surveyor"
-SURVEYOR_UP="$(upload severance-surveyor "$WORK/severance-surveyor.zip" "$SURVEYOR_ENV")"
+SURVEYOR_UP="$(upload severance-surveyor "$WORK/severance-surveyor.zip" "$SURVEYOR_ENV" openai)"
 echo "$SURVEYOR_UP"
 echo "uploading severance-porter"
 PORTER_UP="$(upload severance-porter "$WORK/severance-porter.zip" "$PORTER_ENV")"
 echo "$PORTER_UP"
 echo "uploading severance-broker"
-BROKER_UP="$(upload severance-broker "$WORK/severance-broker.zip" "$BROKER_ENV")"
+BROKER_UP="$(upload severance-broker "$WORK/severance-broker.zip" "$BROKER_ENV" openai)"
 echo "$BROKER_UP"
 echo "uploading severance-pilot"
 PILOT_UP="$(upload severance-pilot "$WORK/severance-pilot.zip" "$PILOT_ENV")"

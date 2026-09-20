@@ -24,7 +24,7 @@ python3 ui/serve.py
 
 Open [http://127.0.0.1:8788](http://127.0.0.1:8788), paste a GitHub URL. The page calls Nasiko A2A (`/api/orchestrator/a2a`) so traces show up under Sessions. The form injects a default ceiling of ₹1500; Surveyor still never infers one.
 
-Offline fixtures are on by default (`SURVEYOR_OFFLINE=1`, `BROKER_OFFLINE=1`, `PORTER_OFFLINE=1`, `PILOT_OFFLINE=1`).
+Shopping/survey data still uses offline fixtures by default (`SURVEYOR_OFFLINE=1`, `BROKER_OFFLINE=1`, `PORTER_OFFLINE=1`, `PILOT_OFFLINE=1`). The Surveyor and Broker narrators call OpenAI: put `OPENAI_API_KEY` in `agents/severance/broker/.env` (gitignored). `./agents/severance/deploy-nasiko.sh` refuses to upload without it.
 
 ## Local agent loops
 

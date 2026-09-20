@@ -179,6 +179,64 @@ def harvest(obj: Any, bucket: dict[str, Any]) -> None:
                         pass
 
 
+def finalize_named(bucket: dict[str, Any]) -> None:
+    named = bucket.get("named") or {}
+    for art in named.values():
+        if not isinstance(art, dict):
+            continue
+        for part in art.get("parts") or []:
+            if not isinstance(part, dict):
+                continue
+            if part.get("data"):
+                harvest(part["data"], bucket)
+            text = part.get("text")
+            if text:
+                harvest(text, bucket)
+
+
+def extract_status_texts(obj: Any) -> list[str]:
+    """Pull short working-message text from A2A status-update SSE payloads."""
+    texts: list[str] = []
+
+    def consider(text: str) -> None:
+        t = text.strip()
+        if not t:
+            return
+        if t[0] in "{[" and ("severance." in t or '"schema"' in t):
+            return
+        t = t.split("\n", 1)[0]
+        if t.startswith("#"):
+            return
+        if len(t) > 180:
+            t = t[:177] + "..."
+        if t in texts:
+            return
+        texts.append(t)
+
+    def walk(node: Any, in_status: bool) -> None:
+        if isinstance(node, dict):
+            kind = str(node.get("kind") or node.get("type") or "")
+            if (
+                "statusUpdate" in node
+                or "status-update" in kind
+                or "status_update" in kind
+                or isinstance(node.get("status"), dict)
+            ):
+                in_status = True
+            if in_status:
+                text = node.get("text")
+                if isinstance(text, str):
+                    consider(text)
+            for value in node.values():
+                walk(value, in_status)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, in_status)
+
+    walk(obj, False)
+    return texts
+
+
 def parse_sse(raw: str) -> dict[str, Any]:
     bucket: dict[str, Any] = {}
     for line in raw.splitlines():
@@ -192,17 +250,58 @@ def parse_sse(raw: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
     harvest(raw, bucket)
-    named = bucket.get("named") or {}
-    for name, art in named.items():
-        for part in art.get("parts") or []:
-            if not isinstance(part, dict):
-                continue
-            if part.get("data"):
-                harvest(part["data"], bucket)
-            text = part.get("text")
-            if text:
-                harvest(text, bucket)
+    finalize_named(bucket)
     return bucket
+
+
+def porter_diff_from_bucket(bucket: dict[str, Any]) -> str | None:
+    named = bucket.get("named") or {}
+    diff_art = named.get("porter_diff")
+    if not isinstance(diff_art, dict):
+        return None
+    for part in diff_art.get("parts") or []:
+        if isinstance(part, dict) and part.get("text"):
+            return str(part["text"])
+    return None
+
+
+def unwrap_pilot(pilot: Any) -> Any:
+    if isinstance(pilot, dict) and "parts" in pilot:
+        for part in pilot.get("parts") or []:
+            if isinstance(part, dict) and part.get("data"):
+                return part["data"]
+    return pilot
+
+
+def _new_artifacts(bucket: dict[str, Any], seen: set[str]) -> list[tuple[str, Any]]:
+    """Return newly harvested artifacts as (kind, data) pairs."""
+    out: list[tuple[str, Any]] = []
+    mapping = (
+        ("spec", "spec"),
+        ("port", "port"),
+        ("shop", "shop"),
+        ("mandate", "mandate"),
+        ("pilot", "pilot"),
+    )
+    for key, kind in mapping:
+        if key in bucket and kind not in seen:
+            seen.add(kind)
+            data = bucket[key]
+            if kind == "pilot":
+                data = unwrap_pilot(data)
+            out.append((kind, data))
+    if "diff" not in seen:
+        diff = porter_diff_from_bucket(bucket)
+        if diff:
+            seen.add("diff")
+            out.append(("diff", diff))
+    named = bucket.get("named") or {}
+    if "pilot" not in seen:
+        parked = named.get("pilot_park")
+        if parked:
+            seen.add("pilot")
+            out.append(("pilot", unwrap_pilot(parked)))
+    return out
 
 
 def plans_from_shop(shop: dict[str, Any] | None, mandate: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -230,7 +329,15 @@ def plans_from_shop(shop: dict[str, Any] | None, mandate: dict[str, Any] | None 
     return plans
 
 
-def a2a_send(token: str, agent_id: str, session_id: str, text: str) -> dict[str, Any]:
+def a2a_send(
+    token: str,
+    agent_id: str,
+    session_id: str,
+    text: str,
+    *,
+    agent: str = "unknown",
+    on_event: Any | None = None,
+) -> dict[str, Any]:
     body = {
         "jsonrpc": "2.0",
         "id": str(uuid.uuid4()),
@@ -245,74 +352,173 @@ def a2a_send(token: str, agent_id: str, session_id: str, text: str) -> dict[str,
             "metadata": {"agent_id": agent_id, "session_id": session_id},
         },
     }
-    status, ctype, raw = _http(
-        "POST",
-        "/api/orchestrator/a2a",
-        token=token,
-        body=body,
-        accept="text/event-stream",
-        timeout=180,
-    )
-    if status >= 400:
-        raise RuntimeError(f"Nasiko A2A {status}: {raw[:500]}")
-    bucket = parse_sse(raw)
+    data = json.dumps(body).encode()
+    headers = {
+        "Accept": "text/event-stream",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+    req = Request(NASIKO_URL + "/api/orchestrator/a2a", data=data, method="POST", headers=headers)
+
+    def push(event: dict[str, Any]) -> None:
+        if on_event:
+            event.setdefault("ts", round(time.time(), 3))
+            event.setdefault("agent", agent)
+            on_event(event)
+
+    bucket: dict[str, Any] = {}
+    seen: set[str] = set()
+    logged: set[str] = set()
+    chunks: list[str] = []
+
+    def flush_artifacts() -> None:
+        finalize_named(bucket)
+        for kind, payload in _new_artifacts(bucket, seen):
+            push({"type": "artifact", "kind": kind, "data": payload})
+
+    def ingest_obj(obj: Any) -> None:
+        harvest(obj, bucket)
+        for line in extract_status_texts(obj):
+            key = line[:240]
+            if key in logged:
+                continue
+            logged.add(key)
+            push({"type": "log", "text": line})
+        flush_artifacts()
+
+    try:
+        resp_cm = urlopen(req, timeout=180)
+    except HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Nasiko A2A {exc.code}: {raw[:500]}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Nasiko A2A unreachable: {exc}") from exc
+
+    with resp_cm as resp:
+        ctype = (resp.headers.get("content-type") or "").lower()
+        status = getattr(resp, "status", 200)
+        if status >= 400:
+            raw = resp.read().decode("utf-8", "replace")
+            raise RuntimeError(f"Nasiko A2A {status}: {raw[:500]}")
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", "replace")
+            chunks.append(line)
+            stripped = line.strip()
+            if not stripped.startswith("data:"):
+                continue
+            payload = stripped[5:].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                ingest_obj(json.loads(payload))
+            except json.JSONDecodeError:
+                continue
+        raw = "".join(chunks)
+
     if "application/json" in ctype and not bucket.get("spec") and not bucket.get("shop"):
         try:
-            harvest(json.loads(raw), bucket)
+            ingest_obj(json.loads(raw))
         except json.JSONDecodeError:
             pass
+    harvest(raw, bucket)
+    flush_artifacts()
     bucket["raw"] = raw
     return bucket
 
 
-def run_pipeline(repo: str, ceiling: int) -> dict[str, Any]:
+def run_pipeline(repo: str, ceiling: int, emit: Any | None = None) -> dict[str, Any]:
+    def push(event: dict[str, Any]) -> None:
+        if emit:
+            event.setdefault("ts", round(time.time(), 3))
+            emit(event)
+
     token = login()
     ids = load_agent_ids(token)
     query = f"Survey {repo} with ceiling ₹{ceiling}"
+
+    push({"type": "log", "agent": "surveyor", "text": f"intake {repo} · ceiling ₹{ceiling}"})
+    push({"type": "phase", "agent": "surveyor", "status": "running"})
     survey_session = create_session(token, ids["surveyor"])
-    survey = a2a_send(token, ids["surveyor"], survey_session, query)
+    try:
+        survey = a2a_send(
+            token, ids["surveyor"], survey_session, query, agent="surveyor", on_event=push
+        )
+    except Exception:
+        push({"type": "phase", "agent": "surveyor", "status": "error"})
+        raise
     spec = survey.get("spec")
     if not spec:
+        push({"type": "phase", "agent": "surveyor", "status": "error"})
         raise RuntimeError("Surveyor did not return a capacity spec")
+    push({"type": "phase", "agent": "surveyor", "status": "done"})
     verdict = ((spec.get("decision") or {}).get("verdict") or "").upper()
+    skip_rest = verdict in {"BLOCKED", "NEEDS_INPUT"}
 
     port = None
     port_session = None
     porter_diff = None
-    if verdict not in {"BLOCKED", "NEEDS_INPUT"} and ids.get("porter"):
+    if skip_rest or not ids.get("porter"):
+        reason = f"verdict {verdict}" if skip_rest else "porter not deployed"
+        push({"type": "log", "agent": "porter", "text": f"skipped · {reason}"})
+        push({"type": "phase", "agent": "porter", "status": "skipped"})
+    else:
+        push({"type": "phase", "agent": "porter", "status": "running"})
+        push({"type": "log", "agent": "porter", "text": "dry-run rewrite from capacity spec"})
         port_session = create_session(token, ids["porter"])
-        porter = a2a_send(token, ids["porter"], port_session, json.dumps(spec))
+        try:
+            porter = a2a_send(
+                token,
+                ids["porter"],
+                port_session,
+                json.dumps(spec),
+                agent="porter",
+                on_event=push,
+            )
+        except Exception:
+            push({"type": "phase", "agent": "porter", "status": "error"})
+            raise
         port = porter.get("port")
-        named = porter.get("named") or {}
-        diff_art = named.get("porter_diff")
-        if isinstance(diff_art, dict):
-            for part in diff_art.get("parts") or []:
-                if isinstance(part, dict) and part.get("text"):
-                    porter_diff = part["text"]
-                    break
-        # Prefer forwarded spec if Porter returned one.
+        porter_diff = porter_diff_from_bucket(porter)
         if porter.get("spec"):
             spec = porter["spec"]
+        push({"type": "phase", "agent": "porter", "status": "done"})
 
     shop_session = None
     shop = None
     mandate = None
-    if verdict not in {"BLOCKED", "NEEDS_INPUT"}:
+    if skip_rest:
+        push({"type": "log", "agent": "broker", "text": f"skipped · verdict {verdict}"})
+        push({"type": "phase", "agent": "broker", "status": "skipped"})
+    else:
+        push({"type": "phase", "agent": "broker", "status": "running"})
+        push({"type": "log", "agent": "broker", "text": "shopping Hetzner, DigitalOcean, Vultr"})
         shop_session = create_session(token, ids["broker"])
-        broker = a2a_send(
-            token,
-            ids["broker"],
-            shop_session,
-            json.dumps(spec),
-        )
+        try:
+            broker = a2a_send(
+                token,
+                ids["broker"],
+                shop_session,
+                json.dumps(spec),
+                agent="broker",
+                on_event=push,
+            )
+        except Exception:
+            push({"type": "phase", "agent": "broker", "status": "error"})
+            raise
         shop = broker.get("shop")
         mandate = broker.get("mandate")
+        push({"type": "phase", "agent": "broker", "status": "done"})
 
     pilot = None
     pilot_session = None
-    if mandate and ids.get("pilot"):
+    if not mandate or not ids.get("pilot"):
+        reason = "no cart mandate" if not mandate else "pilot not deployed"
+        push({"type": "log", "agent": "pilot", "text": f"skipped · {reason}"})
+        push({"type": "phase", "agent": "pilot", "status": "skipped"})
+    else:
+        push({"type": "phase", "agent": "pilot", "status": "running"})
+        push({"type": "log", "agent": "pilot", "text": "verify cart · park without purchase"})
         pilot_session = create_session(token, ids["pilot"])
-        # Mark approval so Pilot's lane routing has a complete cart; Pilot still parks.
         cart = dict(mandate)
         approval = dict(cart.get("approval") or {})
         if approval.get("status") != "approved":
@@ -322,13 +528,22 @@ def run_pipeline(repo: str, ceiling: int) -> dict[str, Any]:
                 "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
             cart["approval"] = approval
-        pilot_resp = a2a_send(token, ids["pilot"], pilot_session, json.dumps(cart))
-        pilot = pilot_resp.get("pilot") or (pilot_resp.get("named") or {}).get("pilot_park")
-        if isinstance(pilot, dict) and "parts" in pilot:
-            for part in pilot.get("parts") or []:
-                if isinstance(part, dict) and part.get("data"):
-                    pilot = part["data"]
-                    break
+        try:
+            pilot_resp = a2a_send(
+                token,
+                ids["pilot"],
+                pilot_session,
+                json.dumps(cart),
+                agent="pilot",
+                on_event=push,
+            )
+        except Exception:
+            push({"type": "phase", "agent": "pilot", "status": "error"})
+            raise
+        pilot = unwrap_pilot(
+            pilot_resp.get("pilot") or (pilot_resp.get("named") or {}).get("pilot_park")
+        )
+        push({"type": "phase", "agent": "pilot", "status": "done"})
 
     plans = plans_from_shop(shop, mandate)
     return {
@@ -377,6 +592,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _sse_begin(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-store")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def _sse_emit(self, obj: dict[str, Any]) -> None:
+        payload = json.dumps(obj, default=str)
+        self.wfile.write(f"data: {payload}\n\n".encode())
+        self.wfile.flush()
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path in {"/", "/index.html"}:
@@ -407,7 +635,7 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send(400, json.dumps({"error": "invalid JSON"}).encode(), "application/json")
             return
-        if path != "/api/run":
+        if path not in {"/api/run", "/api/run/stream"}:
             self._send(404, json.dumps({"error": "not found"}).encode(), "application/json")
             return
         repo = str(payload.get("repo") or "").strip()
@@ -419,6 +647,14 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         ceiling = int(payload.get("ceiling") or CEILING)
+        if path == "/api/run/stream":
+            self._sse_begin()
+            try:
+                result = run_pipeline(repo, ceiling, emit=self._sse_emit)
+                self._sse_emit({"type": "done", **result})
+            except Exception as exc:
+                self._sse_emit({"type": "error", "error": str(exc)})
+            return
         try:
             result = run_pipeline(repo, ceiling)
         except Exception as exc:
@@ -427,8 +663,19 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps(result).encode(), "application/json")
 
 
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
 def main() -> None:
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    try:
+        server = Server((HOST, PORT), Handler)
+    except OSError as exc:
+        if getattr(exc, "errno", None) in {48, 98}:
+            print(f"port {PORT} is already in use (http://{HOST}:{PORT})")
+            print(f"stop the other process: lsof -iTCP:{PORT} -sTCP:LISTEN")
+            raise SystemExit(1) from exc
+        raise
     print(f"Severance UI  http://{HOST}:{PORT}")
     print(f"Nasiko        {NASIKO_URL}")
     try:

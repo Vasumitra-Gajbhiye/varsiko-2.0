@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -125,8 +126,38 @@ class SurveyorAgentExecutor(AgentExecutor):
             TaskState.working,
             new_agent_text_message("Surveying...", task.context_id, task.id),
         )
-        result = run_pipeline(intake, on_stage=lambda name: None)
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        sentinel = object()
+        seen: set[str] = set()
+
+        def on_stage(name: str) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, name)
+
+        def work() -> Any:
+            try:
+                return run_pipeline(intake, on_stage=on_stage)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
+
+        fut = loop.run_in_executor(None, work)
+        while True:
+            item = await queue.get()
+            if item is sentinel:
+                break
+            name = str(item)
+            if name in seen:
+                continue
+            seen.add(name)
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(name.replace("_", " ") + "...", task.context_id, task.id),
+            )
+        result = await fut
         for name in result.stages:
+            if name in seen:
+                continue
+            seen.add(name)
             await updater.update_status(
                 TaskState.working,
                 new_agent_text_message(name.replace("_", " ") + "...", task.context_id, task.id),
@@ -151,6 +182,13 @@ class SurveyorAgentExecutor(AgentExecutor):
                 name="surveyor_card",
             )
 
+        await self._speak(
+            updater,
+            task,
+            intake.repo_url or "",
+            result.card or result.as_narration(),
+        )
+
         if result.park:
             self.pending[context_id] = PendingSurvey(
                 intake=intake,
@@ -172,6 +210,22 @@ class SurveyorAgentExecutor(AgentExecutor):
 
         self.pending.pop(context_id, None)
         await updater.complete()
+
+    async def _speak(self, updater, task, query: str, facts: str) -> None:
+        fn = getattr(self.agent, "narrate", None)
+        if not callable(fn) or not facts.strip():
+            return
+        try:
+            spoken = await fn(query, facts)
+        except Exception:
+            logger.exception("OpenAI narration failed; keeping pipeline output")
+            return
+        if not spoken or spoken.strip() == facts.strip():
+            return
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(spoken, task.context_id, task.id),
+        )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise ServerError(error=UnsupportedOperationError())

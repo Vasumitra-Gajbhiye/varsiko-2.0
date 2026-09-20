@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -71,7 +72,34 @@ class BrokerAgentExecutor(AgentExecutor):
                     TaskState.working,
                     new_agent_text_message("Shopping providers...", task.context_id, task.id),
                 )
-                result = run_pipeline(query)
+                loop = asyncio.get_running_loop()
+                queue: asyncio.Queue = asyncio.Queue()
+                sentinel = object()
+
+                def on_progress(provider: str, action: str) -> None:
+                    loop.call_soon_threadsafe(queue.put_nowait, (provider, action))
+
+                def work():
+                    try:
+                        return run_pipeline(query, on_progress=on_progress)
+                    finally:
+                        loop.call_soon_threadsafe(queue.put_nowait, sentinel)
+
+                fut = loop.run_in_executor(None, work)
+                while True:
+                    item = await queue.get()
+                    if item is sentinel:
+                        break
+                    provider, action = item
+                    if provider:
+                        msg = f"{action} {provider}..."
+                    else:
+                        msg = f"{action}..."
+                    await updater.update_status(
+                        TaskState.working,
+                        new_agent_text_message(msg, task.context_id, task.id),
+                    )
+                result = await fut
                 if result.error or result.mandate is None:
                     text = result.as_narration()
                     await updater.add_artifact([Part(root=TextPart(text=text))], name="broker_error")
@@ -110,6 +138,7 @@ class BrokerAgentExecutor(AgentExecutor):
                     TaskState.working,
                     new_agent_text_message(card, task.context_id, task.id),
                 )
+                await self._speak(updater, task, query, card)
                 await updater.complete()
                 return
 
@@ -194,6 +223,22 @@ class BrokerAgentExecutor(AgentExecutor):
             TaskState.input_required,
             new_agent_text_message(outcome.message, task.context_id, task.id),
             final=True,
+        )
+
+    async def _speak(self, updater, task, query: str, facts: str) -> None:
+        fn = getattr(self.agent, "narrate", None)
+        if not callable(fn) or not facts.strip():
+            return
+        try:
+            spoken = await fn(query, facts)
+        except Exception:
+            logger.exception("OpenAI narration failed; keeping pipeline output")
+            return
+        if not spoken or spoken.strip() == facts.strip():
+            return
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(spoken, task.context_id, task.id),
         )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
